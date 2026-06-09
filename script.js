@@ -42,7 +42,7 @@ function makeCard(m) {
   const bloq = (estado === 'bloqueada' && !getEstado(m.id)) ? `<span class="mat-bloqueada-badge">🔒</span>` : '';
   div.innerHTML = `${bloq}<div class="mat-codigo">${m.codigo}</div><div class="mat-nombre">${m.nombre}</div><div class="mat-cred">Cr. ${m.creditos} (${m.ht || 0}, ${m.hp || 0})</div>`;
 
-  div.addEventListener('click', e => { e.stopPropagation(); activateCard(m.id); });
+  div.addEventListener('click', e => { e.stopPropagation(); if (activeId === m.id) clearActive(); else activateCard(m.id); });
   div.addEventListener('contextmenu', e => { e.preventDefault(); ctxTarget = m.id; showCtx(e.clientX, e.clientY); });
   return div;
 }
@@ -297,7 +297,6 @@ document.getElementById('ctx-menu').addEventListener('click', e => {
   setEstado(ctxTarget, action === 'reset' ? null : action);
   document.getElementById('ctx-menu').style.display = 'none';
   render();
-  if (ctxTarget) activateCard(ctxTarget);
 });
 
 document.addEventListener('click', e => {
