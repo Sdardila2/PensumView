@@ -25,9 +25,15 @@ document.body.appendChild(selRect);
 function updateBulkBar() {
   const bar = document.getElementById('bulk-bar');
   const count = seleccionIds.size;
-  if (count === 0) { bar.classList.remove('open'); return; }
+  if (count === 0) { 
+    bar.classList.remove('open'); 
+    if (!activeId) updateArrowsHighlight(new Set());
+    else updateArrowsHighlight(new Set([activeId]));
+    return; 
+  }
   bar.classList.add('open');
   document.getElementById('bulk-count').textContent = `${count} materia${count > 1 ? 's' : ''} seleccionada${count > 1 ? 's' : ''}`;
+  updateArrowsHighlight(seleccionIds);
 }
 
 function clearSeleccion() {
@@ -51,7 +57,6 @@ function hitTestRect(x1, y1, x2, y2) {
   updateBulkBar();
 }
 
-// Drag listeners se adjuntan sobre canvas-wrapper después del DOM
 function initDragSelect() {
   const wrapper = document.querySelector('.canvas-wrapper');
 
@@ -147,7 +152,7 @@ function buildMap(carrera) {
   if (carrera.idiomas) carrera.idiomas.forEach(m => { materiasMap[m.id] = { ...m, _sem: m.semestre_ref }; });
 }
 
-// ── Cards ───────────────────────────────────────────────────
+// ── Cards optimizadas ───────────────────────────────────────
 function makeCard(m) {
   const div = document.createElement('div');
   const estado = calcVisible(m.id);
@@ -155,28 +160,185 @@ function makeCard(m) {
   div.className = `mat-card ${m.categoria} ${estClass}`.trim();
   div.dataset.id = m.id;
 
-  const bloq = (estado === 'bloqueada' && !getEstado(m.id)) ? `<span class="mat-bloqueada-badge">🔒</span>` : '';
-  div.innerHTML = `${bloq}<div class="mat-codigo">${m.codigo}</div><div class="mat-nombre">${m.nombre}</div><div class="mat-cred">Cr. ${m.creditos} (${m.ht || 0}, ${m.hp || 0})</div>`;
-
-  div.addEventListener('click', e => {
-    e.stopPropagation();
-    // Shift+clic, modo botón activo, o clic cuando hay selección activa → toggle selección
-    if (e.shiftKey || seleccionModeBtn || seleccionIds.size > 0) {
-      if (seleccionIds.has(m.id)) { seleccionIds.delete(m.id); div.classList.remove('sel-check'); }
-      else { seleccionIds.add(m.id); div.classList.add('sel-check'); }
-      updateBulkBar();
-      return;
-    }
-    if (activeId === m.id) clearActive(); else activateCard(m.id);
-  });
-  div.addEventListener('contextmenu', e => {
-    e.preventDefault();
-    ctxTarget = m.id; showCtx(e.clientX, e.clientY);
-  });
+  if (estado === 'bloqueada' && !getEstado(m.id)) {
+    const badge = document.createElement('span');
+    badge.className = 'mat-bloqueada-badge';
+    badge.textContent = '🔒';
+    div.appendChild(badge);
+  }
+  const codigo = document.createElement('div');
+  codigo.className = 'mat-codigo';
+  codigo.textContent = m.codigo;
+  const nombre = document.createElement('div');
+  nombre.className = 'mat-nombre';
+  nombre.textContent = m.nombre;
+  const cred = document.createElement('div');
+  cred.className = 'mat-cred';
+  cred.textContent = `Cr. ${m.creditos} (${m.ht || 0}, ${m.hp || 0})`;
+  div.appendChild(codigo);
+  div.appendChild(nombre);
+  div.appendChild(cred);
   return div;
 }
 
-// ── Render ──────────────────────────────────────────────────
+// ── Gestión de flechas y resaltado ──────────────────────────
+let positionsCache = null;
+let positionsDirty = true;
+
+function invalidatePositions() {
+  positionsDirty = true;
+}
+
+function drawArrows() {
+  if (!positionsDirty && positionsCache) {
+    drawArrowsFromCache(positionsCache);
+    return;
+  }
+  const svg = document.getElementById('arrows-svg');
+  if (!svg) return;
+  const canvasRect = document.getElementById('pensum-canvas').getBoundingClientRect();
+  const scrollLeft = document.querySelector('.canvas-wrapper').scrollLeft;
+  const scrollTop = document.querySelector('.canvas-wrapper').scrollTop;
+  const positions = {};
+  for (const [id, el] of Object.entries(cardEls)) {
+    const rect = el.getBoundingClientRect();
+    positions[id] = {
+      x: rect.left - canvasRect.left + scrollLeft + rect.width / 2,
+      y: rect.top - canvasRect.top + scrollTop + rect.height / 2
+    };
+  }
+  positionsCache = positions;
+  positionsDirty = false;
+  drawArrowsFromCache(positions);
+}
+
+function drawArrowsFromCache(positions) {
+  const svg = document.getElementById('arrows-svg');
+  if (!svg) return;
+  svg.innerHTML = '<defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#94a3b8"/></marker><marker id="arr-co" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#f59e0b"/></marker></defs>';
+  for (const [id, m] of Object.entries(materiasMap)) {
+    const to = positions[id];
+    if (!to) continue;
+    m.prerreqs.forEach(pid => {
+      const from = positions[pid];
+      if (!from) return;
+      const mx = (from.x + to.x) / 2;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M${from.x},${from.y} C${mx},${from.y} ${mx},${to.y} ${to.x},${to.y}`);
+      path.setAttribute('stroke', '#94a3b8');
+      path.setAttribute('stroke-width', '1.2');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('opacity', '0.5');
+      path.setAttribute('marker-end', 'url(#arr)');
+      path.dataset.from = pid;
+      path.dataset.to = id;
+      path.dataset.type = 'pre';
+      svg.appendChild(path);
+    });
+    m.correqs.forEach(cid => {
+      const from = positions[cid];
+      if (!from) return;
+      const mx = (from.x + to.x) / 2;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M${from.x},${from.y} C${mx},${from.y} ${mx},${to.y} ${to.x},${to.y}`);
+      path.setAttribute('stroke', '#f59e0b');
+      path.setAttribute('stroke-width', '1.2');
+      path.setAttribute('stroke-dasharray', '4,3');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('opacity', '0.5');
+      path.setAttribute('marker-end', 'url(#arr-co)');
+      path.dataset.from = cid;
+      path.dataset.to = id;
+      path.dataset.type = 'co';
+      svg.appendChild(path);
+    });
+  }
+}
+
+// Calcula todas las materias relacionadas (prerreqs, correqs, y las que dependen) para un conjunto dado
+function computeRelIds(ids) {
+  const related = new Set(ids);
+  for (const id of ids) {
+    const m = materiasMap[id];
+    if (m) {
+      m.prerreqs.forEach(p => related.add(p));
+      m.correqs.forEach(c => related.add(c));
+    }
+  }
+  for (const [oid, om] of Object.entries(materiasMap)) {
+    if (om.prerreqs.some(p => ids.has(p)) || om.correqs.some(c => ids.has(c))) {
+      related.add(oid);
+    }
+  }
+  return related;
+}
+
+// Actualiza la opacidad, color y grosor de las flechas según las materias activas
+function updateArrowsHighlight(activeIds) {
+  const svg = document.getElementById('arrows-svg');
+  if (!svg) return;
+  const paths = svg.querySelectorAll('path');
+  if (activeIds.size === 0) {
+    // Restaurar estilos base a todas las flechas
+    paths.forEach(p => {
+      p.setAttribute('opacity', '0.5');
+      if (p.dataset.type === 'pre') {
+        p.setAttribute('stroke', '#94a3b8');
+        p.setAttribute('stroke-width', '1.2');
+      } else if (p.dataset.type === 'co') {
+        p.setAttribute('stroke', '#f59e0b');
+        p.setAttribute('stroke-width', '1.2');
+      }
+    });
+    return;
+  }
+  // Primero, poner todas las flechas en estado atenuado (opacidad baja, colores base)
+  paths.forEach(p => {
+    p.setAttribute('opacity', '0.25');
+    if (p.dataset.type === 'pre') {
+      p.setAttribute('stroke', '#94a3b8');
+      p.setAttribute('stroke-width', '1.2');
+    } else if (p.dataset.type === 'co') {
+      p.setAttribute('stroke', '#f59e0b');
+      p.setAttribute('stroke-width', '1.2');
+    }
+  });
+  // Luego resaltar las flechas relacionadas con las materias activas
+  paths.forEach(path => {
+    const from = path.dataset.from;
+    const to = path.dataset.to;
+    if (!from || !to) return;
+    const isRelated = activeIds.has(from) || activeIds.has(to);
+    if (isRelated) {
+      path.setAttribute('opacity', '1');
+      if (path.dataset.type === 'pre') {
+        path.setAttribute('stroke', '#3b82f6'); // Azul brillante
+        path.setAttribute('stroke-width', '2.5');
+      } else if (path.dataset.type === 'co') {
+        path.setAttribute('stroke', '#ea580c'); // Naranja intenso
+        path.setAttribute('stroke-width', '2.5');
+      }
+    }
+  });
+}
+
+let arrowFrame = null;
+function scheduleDrawArrows() {
+  if (arrowFrame) cancelAnimationFrame(arrowFrame);
+  arrowFrame = requestAnimationFrame(() => {
+    drawArrows();
+    if (activeId) {
+      updateArrowsHighlight(new Set([activeId]));
+    } else if (seleccionIds.size > 0) {
+      updateArrowsHighlight(seleccionIds);
+    } else {
+      updateArrowsHighlight(new Set());
+    }
+    arrowFrame = null;
+  });
+}
+
+// ── Render principal ────────────────────────────────────────
 function render() {
   if (!carreraActual) return;
   const canvas = document.getElementById('pensum-canvas');
@@ -246,11 +408,12 @@ function render() {
     }
   }
 
-  // Restore selection visual after re-render
+  // Restore selection visual
   seleccionIds.forEach(id => { if (cardEls[id]) cardEls[id].classList.add('sel-check'); });
 
   renderStats();
-  requestAnimationFrame(() => drawArrows());
+  invalidatePositions();
+  scheduleDrawArrows();
 }
 
 function toRoman(n) {
@@ -281,73 +444,38 @@ function renderStats() {
     <div class="spill tot">${ap}/${total} materias · ${pct}%</div>`;
 }
 
-// ── Flechas ─────────────────────────────────────────────────
-function drawArrows() {
-  const svg = document.getElementById('arrows-svg');
-  if (!svg) return;
-  svg.innerHTML = '<defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#94a3b8"/></marker><marker id="arr-co" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#f59e0b"/></marker></defs>';
-
-  const canvas = document.getElementById('pensum-canvas');
-  const cr = canvas.getBoundingClientRect();
-  const scrollX = canvas.parentElement.scrollLeft;
-
-  function center(el) {
-    const r = el.getBoundingClientRect();
-    return { x: r.left - cr.left + scrollX + r.width / 2, y: r.top - cr.top + r.height / 2 };
+// ── Delegación de eventos ───────────────────────────────────
+const pensumCanvas = document.getElementById('pensum-canvas');
+pensumCanvas.addEventListener('click', (e) => {
+  const card = e.target.closest('.mat-card');
+  if (!card) return;
+  const id = card.dataset.id;
+  if (!id) return;
+  e.stopPropagation();
+  if (e.shiftKey || seleccionModeBtn || seleccionIds.size > 0) {
+    if (seleccionIds.has(id)) { seleccionIds.delete(id); card.classList.remove('sel-check'); }
+    else { seleccionIds.add(id); card.classList.add('sel-check'); }
+    updateBulkBar();
+    return;
   }
+  if (activeId === id) clearActive(); else activateCard(id);
+});
+pensumCanvas.addEventListener('contextmenu', (e) => {
+  const card = e.target.closest('.mat-card');
+  if (!card) return;
+  e.preventDefault();
+  ctxTarget = card.dataset.id;
+  showCtx(e.clientX, e.clientY);
+});
 
-  Object.values(materiasMap).forEach(m => {
-    const toEl = cardEls[m.id];
-    if (!toEl) return;
-    const to = center(toEl);
-
-    m.prerreqs.forEach(pid => {
-      const fromEl = cardEls[pid];
-      if (!fromEl) return;
-      const from = center(fromEl);
-      const mx = (from.x + to.x) / 2;
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', `M${from.x},${from.y} C${mx},${from.y} ${mx},${to.y} ${to.x},${to.y}`);
-      path.setAttribute('stroke', '#94a3b8');
-      path.setAttribute('stroke-width', '1.2');
-      path.setAttribute('fill', 'none');
-      path.setAttribute('opacity', '0.5');
-      path.setAttribute('marker-end', 'url(#arr)');
-      path.dataset.from = pid; path.dataset.to = m.id; path.dataset.type = 'pre';
-      svg.appendChild(path);
-    });
-
-    m.correqs.forEach(cid => {
-      const fromEl = cardEls[cid];
-      if (!fromEl) return;
-      const from = center(fromEl);
-      const mx = (from.x + to.x) / 2;
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', `M${from.x},${from.y} C${mx},${from.y} ${mx},${to.y} ${to.x},${to.y}`);
-      path.setAttribute('stroke', '#f59e0b');
-      path.setAttribute('stroke-width', '1.2');
-      path.setAttribute('stroke-dasharray', '4,3');
-      path.setAttribute('fill', 'none');
-      path.setAttribute('opacity', '0.5');
-      path.setAttribute('marker-end', 'url(#arr-co)');
-      path.dataset.from = cid; path.dataset.to = m.id; path.dataset.type = 'co';
-      svg.appendChild(path);
-    });
-  });
-}
-
-// ── Activar / Detalles ───────────────────────────────────────
 function activateCard(id) {
   activeId = id;
   const m = materiasMap[id];
   if (!m) return;
 
   Object.values(cardEls).forEach(el => el.classList.remove('dim', 'highlight-req', 'highlight-dep'));
-  const relIds = new Set([id]);
-  m.prerreqs.forEach(p => relIds.add(p));
-  m.correqs.forEach(c => relIds.add(c));
-  Object.values(materiasMap).forEach(om => { if (om.prerreqs.includes(id) || om.correqs.includes(id)) relIds.add(om.id); });
-
+  const relIds = computeRelIds(new Set([id]));
+  
   Object.entries(cardEls).forEach(([eid, el]) => {
     if (!relIds.has(eid)) { el.classList.add('dim'); return; }
     if (eid === id) return;
@@ -355,21 +483,18 @@ function activateCard(id) {
     else el.classList.add('highlight-dep');
   });
 
-  const svg = document.getElementById('arrows-svg');
-  if (svg) svg.querySelectorAll('path').forEach(p => {
-    const isRel = p.dataset.from === id || p.dataset.to === id || relIds.has(p.dataset.from) && p.dataset.to === id || p.dataset.from === id;
-    p.setAttribute('opacity', isRel ? '0.9' : '0.08');
-    if (isRel) { p.setAttribute('stroke-width', '2'); }
-  });
-
+  updateArrowsHighlight(new Set([id]));
   showDetail(id);
 }
 
 function clearActive() {
   activeId = null;
   Object.values(cardEls).forEach(el => el.classList.remove('dim', 'highlight-req', 'highlight-dep'));
-  const svg = document.getElementById('arrows-svg');
-  if (svg) svg.querySelectorAll('path').forEach(p => { p.setAttribute('opacity', '0.5'); p.setAttribute('stroke-width', '1.2'); });
+  if (seleccionIds.size > 0) {
+    updateArrowsHighlight(seleccionIds);
+  } else {
+    updateArrowsHighlight(new Set());
+  }
   document.getElementById('detail-panel').classList.remove('open');
 }
 
@@ -435,13 +560,13 @@ document.getElementById('ctx-menu').addEventListener('click', e => {
   render();
 });
 
-// ── Eventos globales ─────────────────────────────────────────
+// ── Eventos globales optimizados ─────────────────────────────
 document.addEventListener('click', e => {
   document.getElementById('ctx-menu').style.display = 'none';
   if (!e.target.closest('.mat-card') &&
-      !e.target.closest('.detail-panel') &&
-      !e.target.closest('.ctx-menu') &&
-      !e.target.closest('.bulk-bar')) clearActive();
+    !e.target.closest('.detail-panel') &&
+    !e.target.closest('.ctx-menu') &&
+    !e.target.closest('.bulk-bar')) clearActive();
 });
 
 document.addEventListener('keydown', e => {
@@ -469,7 +594,21 @@ document.getElementById('view-toggle').addEventListener('click', e => {
   render();
 });
 
-window.addEventListener('resize', () => { if (carreraActual) requestAnimationFrame(drawArrows); });
+let resizeTimer;
+window.addEventListener('resize', () => {
+  if (carreraActual) {
+    invalidatePositions();
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => scheduleDrawArrows(), 100);
+  }
+});
+const wrapperScroll = document.querySelector('.canvas-wrapper');
+wrapperScroll.addEventListener('scroll', () => {
+  if (carreraActual) {
+    invalidatePositions();
+    scheduleDrawArrows();
+  }
+});
 
 // ── Buscador ─────────────────────────────────────────────────
 function applySearch(q) {
@@ -479,6 +618,9 @@ function applySearch(q) {
   if (!searchQuery) {
     Object.values(cardEls).forEach(el => el.classList.remove('dim', 'search-match'));
     if (svg) svg.querySelectorAll('path').forEach(p => { p.setAttribute('opacity', '0.5'); p.setAttribute('stroke-width', '1.2'); });
+    if (activeId) updateArrowsHighlight(new Set([activeId]));
+    else if (seleccionIds.size) updateArrowsHighlight(seleccionIds);
+    else updateArrowsHighlight(new Set());
     return;
   }
 
