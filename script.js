@@ -8,7 +8,69 @@ let cardEls = {};
 let ctxTarget = null;
 let activeId = null;
 let vistaMode = 'completa';
+let searchQuery = '';
 
+// ── Selección múltiple ──────────────────────────────────────
+let seleccionMode = false;
+let seleccionIds = new Set();
+
+function toggleSeleccionMode(on) {
+  seleccionMode = on;
+  seleccionIds.clear();
+  document.getElementById('btn-seleccion').classList.toggle('active', on);
+  document.body.classList.toggle('seleccion-mode', on);
+  updateBulkBar();
+  if (!on) {
+    Object.values(cardEls).forEach(el => el.classList.remove('sel-check'));
+    clearActive();
+  }
+}
+
+function toggleSeleccionCard(id) {
+  if (seleccionIds.has(id)) seleccionIds.delete(id);
+  else seleccionIds.add(id);
+  const el = cardEls[id];
+  if (el) el.classList.toggle('sel-check', seleccionIds.has(id));
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulk-bar');
+  const count = seleccionIds.size;
+  if (!seleccionMode || count === 0) { bar.classList.remove('open'); return; }
+  bar.classList.add('open');
+  document.getElementById('bulk-count').textContent = `${count} materia${count > 1 ? 's' : ''} seleccionada${count > 1 ? 's' : ''}`;
+}
+
+document.getElementById('bulk-bar').addEventListener('click', e => {
+  const btn = e.target.closest('[data-bulk]');
+  if (!btn) return;
+  const action = btn.dataset.bulk;
+  if (action === 'cancel') { toggleSeleccionMode(false); return; }
+  seleccionIds.forEach(id => setEstado(id, action === 'reset' ? null : action));
+  toggleSeleccionMode(false);
+  render();
+});
+
+document.getElementById('btn-seleccion').addEventListener('click', () => {
+  toggleSeleccionMode(!seleccionMode);
+});
+
+// ── Restablecer todo ────────────────────────────────────────
+document.getElementById('btn-reset-all').addEventListener('click', () => {
+  document.getElementById('modal-reset').classList.add('open');
+});
+document.getElementById('modal-cancel').addEventListener('click', () => {
+  document.getElementById('modal-reset').classList.remove('open');
+});
+document.getElementById('modal-confirm').addEventListener('click', () => {
+  estados = {};
+  saveState();
+  document.getElementById('modal-reset').classList.remove('open');
+  render();
+});
+
+// ── Estado ──────────────────────────────────────────────────
 function loadState() {
   try { estados = JSON.parse(localStorage.getItem(ESTADO_KEY) || '{}'); } catch { estados = {}; }
 }
@@ -32,6 +94,7 @@ function buildMap(carrera) {
   if (carrera.idiomas) carrera.idiomas.forEach(m => { materiasMap[m.id] = { ...m, _sem: m.semestre_ref }; });
 }
 
+// ── Cards ───────────────────────────────────────────────────
 function makeCard(m) {
   const div = document.createElement('div');
   const estado = calcVisible(m.id);
@@ -40,13 +103,23 @@ function makeCard(m) {
   div.dataset.id = m.id;
 
   const bloq = (estado === 'bloqueada' && !getEstado(m.id)) ? `<span class="mat-bloqueada-badge">🔒</span>` : '';
-  div.innerHTML = `${bloq}<div class="mat-codigo">${m.codigo}</div><div class="mat-nombre">${m.nombre}</div><div class="mat-cred">Cr. ${m.creditos} (${m.ht || 0}, ${m.hp || 0})</div>`;
+  const chk = `<span class="sel-indicator"></span>`;
+  div.innerHTML = `${chk}${bloq}<div class="mat-codigo">${m.codigo}</div><div class="mat-nombre">${m.nombre}</div><div class="mat-cred">Cr. ${m.creditos} (${m.ht || 0}, ${m.hp || 0})</div>`;
 
-  div.addEventListener('click', e => { e.stopPropagation(); if (activeId === m.id) clearActive(); else activateCard(m.id); });
-  div.addEventListener('contextmenu', e => { e.preventDefault(); ctxTarget = m.id; showCtx(e.clientX, e.clientY); });
+  div.addEventListener('click', e => {
+    e.stopPropagation();
+    if (seleccionMode) { toggleSeleccionCard(m.id); return; }
+    if (activeId === m.id) clearActive(); else activateCard(m.id);
+  });
+  div.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if (seleccionMode) { toggleSeleccionCard(m.id); return; }
+    ctxTarget = m.id; showCtx(e.clientX, e.clientY);
+  });
   return div;
 }
 
+// ── Render ──────────────────────────────────────────────────
 function render() {
   if (!carreraActual) return;
   const canvas = document.getElementById('pensum-canvas');
@@ -116,6 +189,9 @@ function render() {
     }
   }
 
+  // Restore selection visual after re-render
+  seleccionIds.forEach(id => { if (cardEls[id]) cardEls[id].classList.add('sel-check'); });
+
   renderStats();
   requestAnimationFrame(() => drawArrows());
 }
@@ -148,6 +224,7 @@ function renderStats() {
     <div class="spill tot">${ap}/${total} materias · ${pct}%</div>`;
 }
 
+// ── Flechas ─────────────────────────────────────────────────
 function drawArrows() {
   const svg = document.getElementById('arrows-svg');
   if (!svg) return;
@@ -202,6 +279,7 @@ function drawArrows() {
   });
 }
 
+// ── Activar / Detalles ───────────────────────────────────────
 function activateCard(id) {
   activeId = id;
   const m = materiasMap[id];
@@ -282,6 +360,7 @@ function showDetail(id) {
   document.getElementById('detail-panel').classList.add('open');
 }
 
+// ── Menú contextual ──────────────────────────────────────────
 function showCtx(x, y) {
   const menu = document.getElementById('ctx-menu');
   menu.style.display = 'block';
@@ -299,13 +378,26 @@ document.getElementById('ctx-menu').addEventListener('click', e => {
   render();
 });
 
+// ── Eventos globales ─────────────────────────────────────────
 document.addEventListener('click', e => {
   document.getElementById('ctx-menu').style.display = 'none';
-  if (!e.target.closest('.mat-card') && !e.target.closest('.detail-panel') && !e.target.closest('.ctx-menu')) clearActive();
+  if (!seleccionMode &&
+      !e.target.closest('.mat-card') &&
+      !e.target.closest('.detail-panel') &&
+      !e.target.closest('.ctx-menu')) clearActive();
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { document.getElementById('ctx-menu').style.display = 'none'; clearActive(); }
+  if (e.key === 'Escape') {
+    document.getElementById('ctx-menu').style.display = 'none';
+    document.getElementById('modal-reset').classList.remove('open');
+    if (seleccionMode) { toggleSeleccionMode(false); return; }
+    clearActive();
+  }
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+    e.preventDefault();
+    document.getElementById('search-input').focus();
+  }
 });
 
 document.getElementById('dp-close').addEventListener('click', clearActive);
@@ -322,6 +414,47 @@ document.getElementById('view-toggle').addEventListener('click', e => {
 
 window.addEventListener('resize', () => { if (carreraActual) requestAnimationFrame(drawArrows); });
 
+// ── Buscador ─────────────────────────────────────────────────
+function applySearch(q) {
+  searchQuery = q.trim().toLowerCase();
+  const svg = document.getElementById('arrows-svg');
+
+  if (!searchQuery) {
+    Object.values(cardEls).forEach(el => el.classList.remove('dim', 'search-match'));
+    if (svg) svg.querySelectorAll('path').forEach(p => { p.setAttribute('opacity', '0.5'); p.setAttribute('stroke-width', '1.2'); });
+    return;
+  }
+
+  clearActive();
+  const matchIds = new Set();
+  Object.values(materiasMap).forEach(m => {
+    if (m.nombre.toLowerCase().includes(searchQuery) || m.codigo.toLowerCase().includes(searchQuery))
+      matchIds.add(m.id);
+  });
+
+  Object.entries(cardEls).forEach(([id, el]) => {
+    el.classList.remove('search-match');
+    if (matchIds.has(id)) { el.classList.remove('dim'); el.classList.add('search-match'); }
+    else el.classList.add('dim');
+  });
+
+  if (svg) svg.querySelectorAll('path').forEach(p => { p.setAttribute('opacity', '0.05'); p.setAttribute('stroke-width', '1.2'); });
+
+  if (matchIds.size === 1) {
+    const id = [...matchIds][0];
+    const el = cardEls[id];
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+  }
+}
+
+document.getElementById('search-input').addEventListener('input', e => applySearch(e.target.value));
+document.getElementById('search-clear').addEventListener('click', () => {
+  document.getElementById('search-input').value = '';
+  applySearch('');
+  document.getElementById('search-input').focus();
+});
+
+// ── Init ─────────────────────────────────────────────────────
 function init() {
   loadState();
   vistaMode = localStorage.getItem(VISTA_KEY) || 'completa';

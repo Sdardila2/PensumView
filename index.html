@@ -27,7 +27,19 @@
           <span class="vb-icon">✦</span> Disponible para mí
         </button>
       </div>
+      <div class="h-actions">
+        <button class="action-btn" id="btn-seleccion" title="Seleccionar varias materias">
+          ☑ Seleccionar
+        </button>
+        <button class="action-btn danger" id="btn-reset-all" title="Restablecer todos los estados">
+          ↺ Restablecer todo
+        </button>
+      </div>
       <select id="carrera-select"></select>
+    </div>
+    <div id="search-box">
+      <input id="search-input" type="text" placeholder="Buscar materia… (/)">
+      <button id="search-clear">✕</button>
     </div>
   </header>
 
@@ -35,51 +47,18 @@
 
   <div class="legend-bar" id="legend-bar">
     <span style="font-size:11px;font-weight:600;color:var(--muted)">Categorías:</span>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-matematicas-bg);border-color:var(--cat-matematicas-border)"></div>
-      <span style="color:var(--cat-matematicas-text)">Matemáticas</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-ciencias-bg);border-color:var(--cat-ciencias-border)"></div>
-      <span style="color:var(--cat-ciencias-text)">Ciencias</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-programacion-bg);border-color:var(--cat-programacion-border)"></div>
-      <span style="color:var(--cat-programacion-text)">Programación</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-sistemas-bg);border-color:var(--cat-sistemas-border)"></div>
-      <span style="color:var(--cat-sistemas-text)">Sistemas</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-electiva-bg);border-color:var(--cat-electiva-border)"></div>
-      <span style="color:var(--cat-electiva-text)">Electiva</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-humanidades-bg);border-color:var(--cat-humanidades-border)"></div>
-      <span style="color:var(--cat-humanidades-text)">Humanidades</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-idiomas-bg);border-color:var(--cat-idiomas-border)"></div>
-      <span style="color:var(--cat-idiomas-text)">Idiomas</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-grado-bg);border-color:var(--cat-grado-border)"></div>
-      <span style="color:var(--cat-grado-text)">Grado/Comp.</span>
-    </div>
+    <div class="leg"><div class="leg-dot" style="background:var(--cat-matematicas-bg);border-color:var(--cat-matematicas-border)"></div><span style="color:var(--cat-matematicas-text)">Matemáticas</span></div>
+    <div class="leg"><div class="leg-dot" style="background:var(--cat-ciencias-bg);border-color:var(--cat-ciencias-border)"></div><span style="color:var(--cat-ciencias-text)">Ciencias</span></div>
+    <div class="leg"><div class="leg-dot" style="background:var(--cat-programacion-bg);border-color:var(--cat-programacion-border)"></div><span style="color:var(--cat-programacion-text)">Programación</span></div>
+    <div class="leg"><div class="leg-dot" style="background:var(--cat-sistemas-bg);border-color:var(--cat-sistemas-border)"></div><span style="color:var(--cat-sistemas-text)">Sistemas</span></div>
+    <div class="leg"><div class="leg-dot" style="background:var(--cat-electiva-bg);border-color:var(--cat-electiva-border)"></div><span style="color:var(--cat-electiva-text)">Electiva</span></div>
+    <div class="leg"><div class="leg-dot" style="background:var(--cat-humanidades-bg);border-color:var(--cat-humanidades-border)"></div><span style="color:var(--cat-humanidades-text)">Humanidades</span></div>
+    <div class="leg"><div class="leg-dot" style="background:var(--cat-idiomas-bg);border-color:var(--cat-idiomas-border)"></div><span style="color:var(--cat-idiomas-text)">Idiomas</span></div>
+    <div class="leg"><div class="leg-dot" style="background:var(--cat-grado-bg);border-color:var(--cat-grado-border)"></div><span style="color:var(--cat-grado-text)">Grado/Comp.</span></div>
     <span style="margin-left:10px;font-size:11px;font-weight:600;color:var(--muted)">Estados:</span>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--estado-aprobada-bg);border-color:var(--estado-aprobada-border)"></div>
-      <span style="color:var(--estado-aprobada-text);background:var(--estado-aprobada-bg);padding:1px 4px;border-radius:3px">Aprobada</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--estado-reprobada-bg);border-color:var(--estado-reprobada-border)"></div>
-      <span style="color:var(--estado-reprobada-text);background:var(--estado-reprobada-bg);padding:1px 4px;border-radius:3px">Reprobada</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--estado-cursando-bg);border-color:var(--estado-cursando-border)"></div>
-      <span style="color:var(--estado-cursando-text);background:var(--estado-cursando-bg);padding:1px 4px;border-radius:3px">Cursando</span>
-    </div>
+    <div class="leg"><div class="leg-dot" style="background:var(--estado-aprobada-bg);border-color:var(--estado-aprobada-border)"></div><span style="color:var(--estado-aprobada-text);background:var(--estado-aprobada-bg);padding:1px 4px;border-radius:3px">Aprobada</span></div>
+    <div class="leg"><div class="leg-dot" style="background:var(--estado-reprobada-bg);border-color:var(--estado-reprobada-border)"></div><span style="color:var(--estado-reprobada-text);background:var(--estado-reprobada-bg);padding:1px 4px;border-radius:3px">Reprobada</span></div>
+    <div class="leg"><div class="leg-dot" style="background:var(--estado-cursando-bg);border-color:var(--estado-cursando-border)"></div><span style="color:var(--estado-cursando-text);background:var(--estado-cursando-bg);padding:1px 4px;border-radius:3px">Cursando</span></div>
     <span style="margin-left:6px;font-size:10px;color:var(--muted)">| Click derecho para cambiar estado · Click para ver detalles</span>
   </div>
 
@@ -89,21 +68,37 @@
     </div>
   </div>
 
+  <!-- Barra de acción masiva -->
+  <div class="bulk-bar" id="bulk-bar">
+    <span class="bulk-count" id="bulk-count"></span>
+    <div class="bulk-actions">
+      <button class="bulk-btn ap" data-bulk="aprobada">✓ Aprobada</button>
+      <button class="bulk-btn cur" data-bulk="cursando">◎ Cursando</button>
+      <button class="bulk-btn rep" data-bulk="reprobada">✗ Reprobada</button>
+      <button class="bulk-btn rst" data-bulk="reset">↺ Restablecer</button>
+    </div>
+    <button class="bulk-cancel" data-bulk="cancel">✕ Cancelar</button>
+  </div>
+
+  <!-- Modal de confirmación restablecer todo -->
+  <div class="modal-overlay" id="modal-reset">
+    <div class="modal-box">
+      <div class="modal-title">¿Restablecer todo?</div>
+      <div class="modal-body">Se borrarán todos los estados (aprobada, cursando, reprobada) de todas las materias. Esta acción no se puede deshacer.</div>
+      <div class="modal-btns">
+        <button class="modal-btn secondary" id="modal-cancel">Cancelar</button>
+        <button class="modal-btn danger" id="modal-confirm">Sí, restablecer</button>
+      </div>
+    </div>
+  </div>
+
   <div class="ctx-menu" id="ctx-menu" style="display:none">
     <div class="ctx-lbl">Cambiar estado</div>
-    <div class="ctx-item" data-action="aprobada">
-      <span class="ctx-dot" style="background:var(--estado-aprobada-bg);border:1.5px solid var(--estado-aprobada-border)"></span>Aprobada
-    </div>
-    <div class="ctx-item" data-action="reprobada">
-      <span class="ctx-dot" style="background:var(--estado-reprobada-bg);border:1.5px solid var(--estado-reprobada-border)"></span>Reprobada / Vista
-    </div>
-    <div class="ctx-item" data-action="cursando">
-      <span class="ctx-dot" style="background:var(--estado-cursando-bg);border:1.5px solid var(--estado-cursando-border)"></span>Cursando
-    </div>
+    <div class="ctx-item" data-action="aprobada"><span class="ctx-dot" style="background:var(--estado-aprobada-bg);border:1.5px solid var(--estado-aprobada-border)"></span>Aprobada</div>
+    <div class="ctx-item" data-action="reprobada"><span class="ctx-dot" style="background:var(--estado-reprobada-bg);border:1.5px solid var(--estado-reprobada-border)"></span>Reprobada / Vista</div>
+    <div class="ctx-item" data-action="cursando"><span class="ctx-dot" style="background:var(--estado-cursando-bg);border:1.5px solid var(--estado-cursando-border)"></span>Cursando</div>
     <div class="ctx-sep"></div>
-    <div class="ctx-item" data-action="reset">
-      <span class="ctx-dot" style="background:#e5e7eb;border:1.5px solid #9ca3af"></span>Restablecer
-    </div>
+    <div class="ctx-item" data-action="reset"><span class="ctx-dot" style="background:#e5e7eb;border:1.5px solid #9ca3af"></span>Restablecer</div>
   </div>
 
   <div class="detail-panel" id="detail-panel">
