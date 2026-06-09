@@ -1,6 +1,7 @@
-const ESTADO_KEY = 'pensum_v2_estados';
+const ESTADO_KEY_BASE = 'pensum_v2_estados_';
 const CARRERA_KEY = 'pensum_v2_carrera';
 const VISTA_KEY = 'pensum_v2_vista';
+
 let estados = {};
 let carreraActual = null;
 let materiasMap = {};
@@ -128,13 +129,31 @@ document.getElementById('modal-confirm').addEventListener('click', () => {
   render();
 });
 
-// ── Estado ──────────────────────────────────────────────────
-function loadState() {
-  try { estados = JSON.parse(localStorage.getItem(ESTADO_KEY) || '{}'); } catch { estados = {}; }
+// ── Estado por carrera ──────────────────────────────────────
+function getEstadoKey() {
+  if (!carreraActual) return ESTADO_KEY_BASE + 'default';
+  return ESTADO_KEY_BASE + carreraActual.id;
 }
-function saveState() { localStorage.setItem(ESTADO_KEY, JSON.stringify(estados)); }
-function getEstado(id) { return estados[id] || null; }
-function setEstado(id, val) { if (val) estados[id] = val; else delete estados[id]; saveState(); }
+
+function loadState() {
+  const key = getEstadoKey();
+  try { estados = JSON.parse(localStorage.getItem(key) || '{}'); } catch { estados = {}; }
+}
+
+function saveState() {
+  const key = getEstadoKey();
+  localStorage.setItem(key, JSON.stringify(estados));
+}
+
+function getEstado(id) {
+  return estados[id] || null;
+}
+
+function setEstado(id, val) {
+  if (val) estados[id] = val;
+  else delete estados[id];
+  saveState();
+}
 
 function calcVisible(id) {
   const e = getEstado(id);
@@ -255,7 +274,6 @@ function drawArrowsFromCache(positions) {
   }
 }
 
-// Calcula todas las materias relacionadas (prerreqs, correqs, y las que dependen) para un conjunto dado
 function computeRelIds(ids) {
   const related = new Set(ids);
   for (const id of ids) {
@@ -273,13 +291,11 @@ function computeRelIds(ids) {
   return related;
 }
 
-// Actualiza la opacidad, color y grosor de las flechas según las materias activas
 function updateArrowsHighlight(activeIds) {
   const svg = document.getElementById('arrows-svg');
   if (!svg) return;
   const paths = svg.querySelectorAll('path');
   if (activeIds.size === 0) {
-    // Restaurar estilos base a todas las flechas
     paths.forEach(p => {
       p.setAttribute('opacity', '0.5');
       if (p.dataset.type === 'pre') {
@@ -292,7 +308,6 @@ function updateArrowsHighlight(activeIds) {
     });
     return;
   }
-  // Primero, poner todas las flechas en estado atenuado (opacidad baja, colores base)
   paths.forEach(p => {
     p.setAttribute('opacity', '0.25');
     if (p.dataset.type === 'pre') {
@@ -303,7 +318,6 @@ function updateArrowsHighlight(activeIds) {
       p.setAttribute('stroke-width', '1.2');
     }
   });
-  // Luego resaltar las flechas relacionadas con las materias activas
   paths.forEach(path => {
     const from = path.dataset.from;
     const to = path.dataset.to;
@@ -312,10 +326,10 @@ function updateArrowsHighlight(activeIds) {
     if (isRelated) {
       path.setAttribute('opacity', '1');
       if (path.dataset.type === 'pre') {
-        path.setAttribute('stroke', '#3b82f6'); // Azul brillante
+        path.setAttribute('stroke', '#3b82f6');
         path.setAttribute('stroke-width', '2.5');
       } else if (path.dataset.type === 'co') {
-        path.setAttribute('stroke', '#ea580c'); // Naranja intenso
+        path.setAttribute('stroke', '#ea580c');
         path.setAttribute('stroke-width', '2.5');
       }
     }
@@ -408,7 +422,6 @@ function render() {
     }
   }
 
-  // Restore selection visual
   seleccionIds.forEach(id => { if (cardEls[id]) cardEls[id].classList.add('sel-check'); });
 
   renderStats();
@@ -653,31 +666,73 @@ document.getElementById('search-clear').addEventListener('click', () => {
   document.getElementById('search-input').focus();
 });
 
-// ── Init ─────────────────────────────────────────────────────
-function init() {
-  loadState();
-  vistaMode = localStorage.getItem(VISTA_KEY) || 'completa';
-  document.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === vistaMode));
-  const sel = document.getElementById('carrera-select');
-  PENSUMS.forEach(c => {
-    const opt = document.createElement('option');
-    opt.value = c.id; opt.textContent = c.nombre;
-    sel.appendChild(opt);
-  });
-  const saved = localStorage.getItem(CARRERA_KEY) || PENSUMS[0]?.id;
-  sel.value = saved || PENSUMS[0]?.id;
-  setCarrera(sel.value);
-  sel.addEventListener('change', () => { localStorage.setItem(CARRERA_KEY, sel.value); setCarrera(sel.value); });
-  initDragSelect();
+// ── Limpieza completa al cambiar de carrera ─────────────────
+function clearAllSelectionAndActive() {
+  // Limpiar selecciones múltiples
+  clearSeleccion();
+  // Limpiar materia activa
+  clearActive();
+  // Limpiar modo selección por botón
+  seleccionModeBtn = false;
+  const btnSel = document.getElementById('btn-seleccion');
+  if (btnSel) btnSel.classList.remove('active');
+  // Limpiar búsqueda
+  document.getElementById('search-input').value = '';
+  applySearch('');
+  // Cerrar menú contextual si está abierto
+  document.getElementById('ctx-menu').style.display = 'none';
+  // Cerrar modal si está abierto
+  document.getElementById('modal-reset').classList.remove('open');
 }
 
+// ── Cambio de carrera ───────────────────────────────────────
 function setCarrera(id) {
+  // Guardar la anterior si existe (para no perder cambios sin guardar, pero ya se guardan al modificar)
+  // Limpiar toda la interfaz antes de cambiar
+  clearAllSelectionAndActive();
+  
   carreraActual = PENSUMS.find(c => c.id === id);
   if (!carreraActual) return;
+  
+  // Cargar los estados específicos de esta carrera
+  loadState();
+  
   buildMap(carreraActual);
   document.getElementById('h-titulo').textContent = carreraActual.nombre.split('—')[0].trim();
   document.getElementById('h-sub').textContent = (carreraActual.nombre.split('—')[1] || '').trim() + (carreraActual.creditos_totales ? ` · ${carreraActual.creditos_totales} créditos totales` : '');
   render();
+}
+
+// ── Init ─────────────────────────────────────────────────────
+function init() {
+  // Cargar vista guardada
+  vistaMode = localStorage.getItem(VISTA_KEY) || 'completa';
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === vistaMode));
+  
+  // Llenar selector de carreras
+  const sel = document.getElementById('carrera-select');
+  PENSUMS.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.nombre;
+    sel.appendChild(opt);
+  });
+  
+  // Cargar última carrera seleccionada
+  const savedCarrera = localStorage.getItem(CARRERA_KEY) || PENSUMS[0]?.id;
+  sel.value = savedCarrera || PENSUMS[0]?.id;
+  
+  // Inicializar la carrera (esto llama a loadState internamente)
+  setCarrera(sel.value);
+  
+  // Evento cambio de carrera
+  sel.addEventListener('change', () => {
+    const newId = sel.value;
+    localStorage.setItem(CARRERA_KEY, newId);
+    setCarrera(newId);
+  });
+  
+  initDragSelect();
 }
 
 init();
