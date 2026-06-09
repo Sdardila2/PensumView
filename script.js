@@ -9,51 +9,104 @@ let ctxTarget = null;
 let activeId = null;
 let vistaMode = 'completa';
 let searchQuery = '';
+let seleccionModeBtn = false;
 
-// ── Selección múltiple ──────────────────────────────────────
-let seleccionMode = false;
+// ── Selección por arrastre ──────────────────────────────────
 let seleccionIds = new Set();
+let isDragging = false;
+let dragStarted = false;
+let dragOrigin = null;
+const DRAG_THRESHOLD = 5;
 
-function toggleSeleccionMode(on) {
-  seleccionMode = on;
-  seleccionIds.clear();
-  document.getElementById('btn-seleccion').classList.toggle('active', on);
-  document.body.classList.toggle('seleccion-mode', on);
-  updateBulkBar();
-  if (!on) {
-    Object.values(cardEls).forEach(el => el.classList.remove('sel-check'));
-    clearActive();
-  }
-}
-
-function toggleSeleccionCard(id) {
-  if (seleccionIds.has(id)) seleccionIds.delete(id);
-  else seleccionIds.add(id);
-  const el = cardEls[id];
-  if (el) el.classList.toggle('sel-check', seleccionIds.has(id));
-  updateBulkBar();
-}
+const selRect = document.createElement('div');
+selRect.id = 'sel-rect';
+document.body.appendChild(selRect);
 
 function updateBulkBar() {
   const bar = document.getElementById('bulk-bar');
   const count = seleccionIds.size;
-  if (!seleccionMode || count === 0) { bar.classList.remove('open'); return; }
+  if (count === 0) { bar.classList.remove('open'); return; }
   bar.classList.add('open');
   document.getElementById('bulk-count').textContent = `${count} materia${count > 1 ? 's' : ''} seleccionada${count > 1 ? 's' : ''}`;
+}
+
+function clearSeleccion() {
+  seleccionIds.clear();
+  seleccionModeBtn = false;
+  const btnSel = document.getElementById('btn-seleccion');
+  if (btnSel) btnSel.classList.remove('active');
+  Object.values(cardEls).forEach(el => el.classList.remove('sel-check'));
+  updateBulkBar();
+}
+
+function hitTestRect(x1, y1, x2, y2) {
+  const left = Math.min(x1, x2), top = Math.min(y1, y2);
+  const right = Math.max(x1, x2), bottom = Math.max(y1, y2);
+  Object.entries(cardEls).forEach(([id, el]) => {
+    const r = el.getBoundingClientRect();
+    const hit = r.left < right && r.right > left && r.top < bottom && r.bottom > top;
+    if (hit) { seleccionIds.add(id); el.classList.add('sel-check'); }
+    else { seleccionIds.delete(id); el.classList.remove('sel-check'); }
+  });
+  updateBulkBar();
+}
+
+// Drag listeners se adjuntan sobre canvas-wrapper después del DOM
+function initDragSelect() {
+  const wrapper = document.querySelector('.canvas-wrapper');
+
+  wrapper.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    if (e.target.closest('.mat-card') || e.target.closest('.bulk-bar')) return;
+    isDragging = true;
+    dragStarted = false;
+    dragOrigin = { x: e.clientX, y: e.clientY };
+    selRect.style.cssText = `display:none;left:${e.clientX}px;top:${e.clientY}px;width:0;height:0`;
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragOrigin.x;
+    const dy = e.clientY - dragOrigin.y;
+    if (!dragStarted && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    if (!dragStarted) {
+      dragStarted = true;
+      clearSeleccion();
+      clearActive();
+      selRect.style.display = 'block';
+    }
+    const x1 = Math.min(dragOrigin.x, e.clientX);
+    const y1 = Math.min(dragOrigin.y, e.clientY);
+    const w = Math.abs(dx), h = Math.abs(dy);
+    selRect.style.left = x1 + 'px';
+    selRect.style.top = y1 + 'px';
+    selRect.style.width = w + 'px';
+    selRect.style.height = h + 'px';
+    hitTestRect(x1, y1, x1 + w, y1 + h);
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    selRect.style.display = 'none';
+    dragStarted = false;
+  });
+
+  document.getElementById('btn-seleccion').addEventListener('click', () => {
+    seleccionModeBtn = !seleccionModeBtn;
+    document.getElementById('btn-seleccion').classList.toggle('active', seleccionModeBtn);
+    if (!seleccionModeBtn) clearSeleccion();
+  });
 }
 
 document.getElementById('bulk-bar').addEventListener('click', e => {
   const btn = e.target.closest('[data-bulk]');
   if (!btn) return;
   const action = btn.dataset.bulk;
-  if (action === 'cancel') { toggleSeleccionMode(false); return; }
+  if (action === 'cancel') { clearSeleccion(); return; }
   seleccionIds.forEach(id => setEstado(id, action === 'reset' ? null : action));
-  toggleSeleccionMode(false);
+  clearSeleccion();
   render();
-});
-
-document.getElementById('btn-seleccion').addEventListener('click', () => {
-  toggleSeleccionMode(!seleccionMode);
 });
 
 // ── Restablecer todo ────────────────────────────────────────
@@ -103,17 +156,21 @@ function makeCard(m) {
   div.dataset.id = m.id;
 
   const bloq = (estado === 'bloqueada' && !getEstado(m.id)) ? `<span class="mat-bloqueada-badge">🔒</span>` : '';
-  const chk = `<span class="sel-indicator"></span>`;
-  div.innerHTML = `${chk}${bloq}<div class="mat-codigo">${m.codigo}</div><div class="mat-nombre">${m.nombre}</div><div class="mat-cred">Cr. ${m.creditos} (${m.ht || 0}, ${m.hp || 0})</div>`;
+  div.innerHTML = `${bloq}<div class="mat-codigo">${m.codigo}</div><div class="mat-nombre">${m.nombre}</div><div class="mat-cred">Cr. ${m.creditos} (${m.ht || 0}, ${m.hp || 0})</div>`;
 
   div.addEventListener('click', e => {
     e.stopPropagation();
-    if (seleccionMode) { toggleSeleccionCard(m.id); return; }
+    // Shift+clic, modo botón activo, o clic cuando hay selección activa → toggle selección
+    if (e.shiftKey || seleccionModeBtn || seleccionIds.size > 0) {
+      if (seleccionIds.has(m.id)) { seleccionIds.delete(m.id); div.classList.remove('sel-check'); }
+      else { seleccionIds.add(m.id); div.classList.add('sel-check'); }
+      updateBulkBar();
+      return;
+    }
     if (activeId === m.id) clearActive(); else activateCard(m.id);
   });
   div.addEventListener('contextmenu', e => {
     e.preventDefault();
-    if (seleccionMode) { toggleSeleccionCard(m.id); return; }
     ctxTarget = m.id; showCtx(e.clientX, e.clientY);
   });
   return div;
@@ -381,17 +438,17 @@ document.getElementById('ctx-menu').addEventListener('click', e => {
 // ── Eventos globales ─────────────────────────────────────────
 document.addEventListener('click', e => {
   document.getElementById('ctx-menu').style.display = 'none';
-  if (!seleccionMode &&
-      !e.target.closest('.mat-card') &&
+  if (!e.target.closest('.mat-card') &&
       !e.target.closest('.detail-panel') &&
-      !e.target.closest('.ctx-menu')) clearActive();
+      !e.target.closest('.ctx-menu') &&
+      !e.target.closest('.bulk-bar')) clearActive();
 });
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     document.getElementById('ctx-menu').style.display = 'none';
     document.getElementById('modal-reset').classList.remove('open');
-    if (seleccionMode) { toggleSeleccionMode(false); return; }
+    clearSeleccion();
     clearActive();
   }
   if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
@@ -469,6 +526,7 @@ function init() {
   sel.value = saved || PENSUMS[0]?.id;
   setCarrera(sel.value);
   sel.addEventListener('change', () => { localStorage.setItem(CARRERA_KEY, sel.value); setCarrera(sel.value); });
+  initDragSelect();
 }
 
 function setCarrera(id) {
