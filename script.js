@@ -1,135 +1,118 @@
 const ESTADO_KEY_BASE = 'pensum_v2_estados_';
 const CARRERA_KEY = 'pensum_v2_carrera';
+const SEGUNDA_CARRERA_KEY = 'pensum_v2_segunda_carrera';
 const VISTA_KEY = 'pensum_v2_vista';
 
 let estados = {};
 let carreraActual = null;
+let segundaCarreraId = null;
+let segundaCarreraData = null;
 let materiasMap = {};
+let pensumFusionado = null;
 let cardEls = {};
-let ctxTarget = null;
 let activeId = null;
 let vistaMode = 'completa';
 let searchQuery = '';
 let seleccionModeBtn = false;
+let ctxTarget = null;
 
-// ── Selección por arrastre ──────────────────────────────────
-let seleccionIds = new Set();
-let isDragging = false;
-let dragStarted = false;
-let dragOrigin = null;
-const DRAG_THRESHOLD = 5;
+// Mapa de homologaciones automático
+let mapaHomologaciones = {};
 
-const selRect = document.createElement('div');
-selRect.id = 'sel-rect';
-document.body.appendChild(selRect);
-
-function updateBulkBar() {
-  const bar = document.getElementById('bulk-bar');
-  const count = seleccionIds.size;
-  if (count === 0) { 
-    bar.classList.remove('open'); 
-    if (!activeId) updateArrowsHighlight(new Set());
-    else updateArrowsHighlight(new Set([activeId]));
-    return; 
-  }
-  bar.classList.add('open');
-  document.getElementById('bulk-count').textContent = `${count} materia${count > 1 ? 's' : ''} seleccionada${count > 1 ? 's' : ''}`;
-  updateArrowsHighlight(seleccionIds);
+// ── Funciones para detección automática de equivalencias ─────────────
+function normalizarTexto(texto) {
+  return texto.toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\s]/g, '')
+    .replace(/\b(introducci[oó]n a |b[aá]sica |i |ii |iii |iv |v |vi |vii |viii |ix |x |fundamentos de )/gi, '')
+    .trim();
 }
 
-function clearSeleccion() {
-  seleccionIds.clear();
-  seleccionModeBtn = false;
-  const btnSel = document.getElementById('btn-seleccion');
-  if (btnSel) btnSel.classList.remove('active');
-  Object.values(cardEls).forEach(el => el.classList.remove('sel-check'));
-  updateBulkBar();
-}
-
-function hitTestRect(x1, y1, x2, y2) {
-  const left = Math.min(x1, x2), top = Math.min(y1, y2);
-  const right = Math.max(x1, x2), bottom = Math.max(y1, y2);
-  Object.entries(cardEls).forEach(([id, el]) => {
-    const r = el.getBoundingClientRect();
-    const hit = r.left < right && r.right > left && r.top < bottom && r.bottom > top;
-    if (hit) { seleccionIds.add(id); el.classList.add('sel-check'); }
-    else { seleccionIds.delete(id); el.classList.remove('sel-check'); }
-  });
-  updateBulkBar();
-}
-
-function initDragSelect() {
-  const wrapper = document.querySelector('.canvas-wrapper');
-
-  wrapper.addEventListener('mousedown', e => {
-    if (e.button !== 0) return;
-    if (e.target.closest('.mat-card') || e.target.closest('.bulk-bar')) return;
-    isDragging = true;
-    dragStarted = false;
-    dragOrigin = { x: e.clientX, y: e.clientY };
-    selRect.style.cssText = `display:none;left:${e.clientX}px;top:${e.clientY}px;width:0;height:0`;
-  });
-
-  document.addEventListener('mousemove', e => {
-    if (!isDragging) return;
-    const dx = e.clientX - dragOrigin.x;
-    const dy = e.clientY - dragOrigin.y;
-    if (!dragStarted && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-    if (!dragStarted) {
-      dragStarted = true;
-      clearSeleccion();
-      clearActive();
-      selRect.style.display = 'block';
+function levenshteinDist(a, b) {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      const cost = a[j - 1] === b[i - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
     }
-    const x1 = Math.min(dragOrigin.x, e.clientX);
-    const y1 = Math.min(dragOrigin.y, e.clientY);
-    const w = Math.abs(dx), h = Math.abs(dy);
-    selRect.style.left = x1 + 'px';
-    selRect.style.top = y1 + 'px';
-    selRect.style.width = w + 'px';
-    selRect.style.height = h + 'px';
-    hitTestRect(x1, y1, x1 + w, y1 + h);
-  });
-
-  document.addEventListener('mouseup', () => {
-    if (!isDragging) return;
-    isDragging = false;
-    selRect.style.display = 'none';
-    dragStarted = false;
-  });
-
-  document.getElementById('btn-seleccion').addEventListener('click', () => {
-    seleccionModeBtn = !seleccionModeBtn;
-    document.getElementById('btn-seleccion').classList.toggle('active', seleccionModeBtn);
-    if (!seleccionModeBtn) clearSeleccion();
-  });
+  }
+  return matrix[b.length][a.length];
 }
 
-document.getElementById('bulk-bar').addEventListener('click', e => {
-  const btn = e.target.closest('[data-bulk]');
-  if (!btn) return;
-  const action = btn.dataset.bulk;
-  if (action === 'cancel') { clearSeleccion(); return; }
-  seleccionIds.forEach(id => setEstado(id, action === 'reset' ? null : action));
-  clearSeleccion();
-  render();
-});
+function similitudCadenas(a, b) {
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  const dist = levenshteinDist(a, b);
+  return 1 - dist / maxLen;
+}
 
-// ── Restablecer todo ────────────────────────────────────────
-document.getElementById('btn-reset-all').addEventListener('click', () => {
-  document.getElementById('modal-reset').classList.add('open');
-});
-document.getElementById('modal-cancel').addEventListener('click', () => {
-  document.getElementById('modal-reset').classList.remove('open');
-});
-document.getElementById('modal-confirm').addEventListener('click', () => {
-  estados = {};
-  saveState();
-  document.getElementById('modal-reset').classList.remove('open');
-  render();
-});
+function sonEquivalentes(materia1, materia2) {
+  if (materia1.codigo === materia2.codigo) return true;
+  const nom1 = normalizarTexto(materia1.nombre);
+  const nom2 = normalizarTexto(materia2.nombre);
+  return similitudCadenas(nom1, nom2) > 0.8;
+}
 
-// ── Estado por carrera ──────────────────────────────────────
+function construirMapaHomologaciones(principal, segunda) {
+  const mapa = {};
+  mapa[principal.id] = {};
+  mapa[segunda.id] = {};
+  const materiasPrinc = principal.semestres.flatMap(s => s.materias);
+  const materiasSeg = segunda.semestres.flatMap(s => s.materias);
+  for (const mp of materiasPrinc) {
+    for (const ms of materiasSeg) {
+      if (sonEquivalentes(mp, ms)) {
+        mapa[principal.id][mp.id] = ms.id;
+        mapa[segunda.id][ms.id] = mp.id;
+      }
+    }
+  }
+  return mapa;
+}
+
+// ── Validaciones de límite de créditos (sin restricción de segundo semestre) ──
+function getLimiteCreditosSemestre() {
+  if (!carreraActual) return 23;
+  const cargaBase = carreraActual.carga_tipica_semestre || 17;
+  return cargaBase <= 17 ? 23 : 25;
+}
+
+function creditosEnCursoEnSemestre(semestreNumero, incluirId = null) {
+  let total = 0;
+  const semestre = carreraActual.semestres.find(s => s.numero === semestreNumero);
+  if (!semestre) return 0;
+  for (const m of semestre.materias) {
+    const estado = getEstado(m.id);
+    if (estado === 'cursando') total += m.creditos;
+    if (incluirId === m.id) total += m.creditos;
+  }
+  return total;
+}
+
+function validarLimiteCreditos(materiaId, nuevoEstado) {
+  if (nuevoEstado !== 'cursando') return true;
+  const m = materiasMap[materiaId];
+  if (!m || m.carreraOrigen !== carreraActual?.id) return true;
+  const semestreNum = m._sem;
+  if (!semestreNum) return true;
+  const actual = creditosEnCursoEnSemestre(semestreNum, materiaId);
+  const limite = getLimiteCreditosSemestre();
+  if (actual > limite) {
+    alert(`No puedes cursar más de ${limite} créditos en el semestre ${semestreNum}. Actualmente ya tienes ${actual - m.creditos} créditos cursando.`);
+    return false;
+  }
+  return true;
+}
+
+// ── Estado por carrera (principal) ──────────────────────────────────
 function getEstadoKey() {
   if (!carreraActual) return ESTADO_KEY_BASE + 'default';
   return ESTADO_KEY_BASE + carreraActual.id;
@@ -150,41 +133,130 @@ function getEstado(id) {
 }
 
 function setEstado(id, val) {
+  if (val === 'cursando' && !validarLimiteCreditos(id, val)) return;
   if (val) estados[id] = val;
   else delete estados[id];
   saveState();
+  // Sincronizar con segunda carrera si hay homologación
+  if (segundaCarreraId && segundaCarreraData && mapaHomologaciones[carreraActual?.id] && mapaHomologaciones[carreraActual.id][id]) {
+    const homologada = mapaHomologaciones[carreraActual.id][id];
+    const secondKey = ESTADO_KEY_BASE + segundaCarreraId;
+    let secondEstados = {};
+    try { secondEstados = JSON.parse(localStorage.getItem(secondKey) || '{}'); } catch { }
+    if (val) secondEstados[homologada] = val;
+    else delete secondEstados[homologada];
+    localStorage.setItem(secondKey, JSON.stringify(secondEstados));
+  }
+  render();
+}
+
+// ── Estado para segunda carrera (lectura) ───────────────────────────
+let secondEstados = {};
+function cargarEstadosSegundaCarrera() {
+  if (!segundaCarreraId) {
+    secondEstados = {};
+    return;
+  }
+  const key = ESTADO_KEY_BASE + segundaCarreraId;
+  try { secondEstados = JSON.parse(localStorage.getItem(key) || '{}'); } catch { secondEstados = {}; }
+}
+function getEstadoSegunda(id) {
+  return secondEstados[id] || null;
+}
+
+// ── Fusión de pensums (excluyendo el primer semestre de la segunda carrera) ──
+function fusionarPensums(principal, segunda) {
+  mapaHomologaciones = construirMapaHomologaciones(principal, segunda);
+  const semestresFusion = principal.semestres.map(s => ({
+    numero: s.numero,
+    creditos: s.creditos,
+    materias: s.materias.map(m => ({ ...m, carreraOrigen: principal.id, homologacion: null }))
+  }));
+
+  const materiasHomologadasSegunda = new Set();
+  for (const semF of semestresFusion) {
+    for (const m of semF.materias) {
+      if (mapaHomologaciones[principal.id] && mapaHomologaciones[principal.id][m.id]) {
+        const homId = mapaHomologaciones[principal.id][m.id];
+        const homMateria = segunda.semestres.flatMap(s => s.materias).find(mat => mat.id === homId);
+        if (homMateria) {
+          m.homologacion = { carrera: segunda.id, materiaId: homId, nombre: homMateria.nombre, codigo: homMateria.codigo };
+          materiasHomologadasSegunda.add(homId);
+        }
+      }
+    }
+  }
+
+  const maxSem = Math.max(principal.semestres.length, segunda.semestres.length);
+  for (let i = 0; i < maxSem; i++) {
+    const semNum = i + 1;
+    let semFusion = semestresFusion.find(s => s.numero === semNum);
+    if (!semFusion) {
+      semFusion = { numero: semNum, creditos: 0, materias: [] };
+      semestresFusion.push(semFusion);
+    }
+    const semSegunda = segunda.semestres.find(s => s.numero === semNum);
+    if (semSegunda && semNum > 1) { // ← SOLO agregar materias de segunda carrera a partir de semestre 2
+      for (const m of semSegunda.materias) {
+        if (!materiasHomologadasSegunda.has(m.id)) {
+          semFusion.materias.push({ ...m, carreraOrigen: segunda.id, homologacion: null });
+        }
+      }
+    }
+  }
+
+  semestresFusion.sort((a, b) => a.numero - b.numero);
+  for (const s of semestresFusion) {
+    s.creditos = s.materias.reduce((sum, m) => sum + m.creditos, 0);
+  }
+  return semestresFusion;
+}
+
+function buildGlobalMap(semestresFusion) {
+  materiasMap = {};
+  for (const sem of semestresFusion) {
+    for (const m of sem.materias) {
+      materiasMap[m.id] = { ...m, _sem: sem.numero };
+    }
+  }
 }
 
 function calcVisible(id) {
-  const e = getEstado(id);
-  if (e) return e;
   const m = materiasMap[id];
   if (!m) return 'disponible';
-  const prereqsOk = m.prerreqs.every(pid => getEstado(pid) === 'aprobada');
-  const correqsOk = m.correqs.every(cid => { const ce = getEstado(cid); return ce === 'cursando' || ce === 'aprobada'; });
+  const estado = (m.carreraOrigen === carreraActual?.id) ? getEstado(id) : getEstadoSegunda(id);
+  if (estado) return estado;
+  const prereqsOk = m.prerreqs.every(pid => {
+    const pm = materiasMap[pid];
+    if (!pm) return true;
+    const estP = (pm.carreraOrigen === carreraActual?.id) ? getEstado(pid) : getEstadoSegunda(pid);
+    return estP === 'aprobada';
+  });
+  const correqsOk = m.correqs.every(cid => {
+    const cm = materiasMap[cid];
+    if (!cm) return true;
+    const estC = (cm.carreraOrigen === carreraActual?.id) ? getEstado(cid) : getEstadoSegunda(cid);
+    return estC === 'cursando' || estC === 'aprobada';
+  });
   return (prereqsOk && correqsOk) ? 'disponible' : 'bloqueada';
 }
 
-function buildMap(carrera) {
-  materiasMap = {};
-  carrera.semestres.forEach(s => s.materias.forEach(m => { materiasMap[m.id] = { ...m, _sem: s.numero }; }));
-  if (carrera.idiomas) carrera.idiomas.forEach(m => { materiasMap[m.id] = { ...m, _sem: m.semestre_ref }; });
-}
-
-// ── Cards optimizadas ───────────────────────────────────────
 function makeCard(m) {
   const div = document.createElement('div');
   const estado = calcVisible(m.id);
   const estClass = estado !== 'disponible' && estado !== 'bloqueada' ? `estado-${estado}` : '';
-  div.className = `mat-card ${m.categoria} ${estClass}`.trim();
+  let additionalClass = '';
+  if (m.carreraOrigen !== carreraActual?.id) additionalClass = ' segunda-carrera';
+  div.className = `mat-card ${m.categoria} ${estClass}${additionalClass}`.trim();
   div.dataset.id = m.id;
 
-  if (estado === 'bloqueada' && !getEstado(m.id)) {
+  if (estado === 'bloqueada' && !calcVisible(m.id)) {
     const badge = document.createElement('span');
     badge.className = 'mat-bloqueada-badge';
     badge.textContent = '🔒';
     div.appendChild(badge);
   }
+
   const codigo = document.createElement('div');
   codigo.className = 'mat-codigo';
   codigo.textContent = m.codigo;
@@ -197,10 +269,19 @@ function makeCard(m) {
   div.appendChild(codigo);
   div.appendChild(nombre);
   div.appendChild(cred);
+
+  if (m.carreraOrigen !== carreraActual?.id) {
+    const originBadge = document.createElement('span');
+    originBadge.className = 'origin-badge';
+    originBadge.textContent = '2ª';
+    originBadge.title = `Materia de ${segundaCarreraData?.nombre || 'segunda carrera'} (a partir de 2° semestre)`;
+    div.appendChild(originBadge);
+  }
+
   return div;
 }
 
-// ── Gestión de flechas y resaltado ──────────────────────────
+// ── Gestión de flechas y resaltado (igual que antes) ─────────────────
 let positionsCache = null;
 let positionsDirty = true;
 
@@ -341,85 +422,61 @@ function scheduleDrawArrows() {
   if (arrowFrame) cancelAnimationFrame(arrowFrame);
   arrowFrame = requestAnimationFrame(() => {
     drawArrows();
-    if (activeId) {
-      updateArrowsHighlight(new Set([activeId]));
-    } else if (seleccionIds.size > 0) {
-      updateArrowsHighlight(seleccionIds);
-    } else {
-      updateArrowsHighlight(new Set());
-    }
+    if (activeId) updateArrowsHighlight(new Set([activeId]));
+    else if (seleccionIds.size) updateArrowsHighlight(seleccionIds);
+    else updateArrowsHighlight(new Set());
     arrowFrame = null;
   });
 }
 
-// ── Render principal ────────────────────────────────────────
+// ── Render principal (sin cambios) ──────────────────────────────────
 function render() {
   if (!carreraActual) return;
   const canvas = document.getElementById('pensum-canvas');
   canvas.innerHTML = '<svg class="arrows" id="arrows-svg"></svg>';
   cardEls = {};
 
+  let semestresMostrar;
+  if (segundaCarreraId && segundaCarreraData) {
+    semestresMostrar = pensumFusionado;
+  } else {
+    semestresMostrar = carreraActual.semestres.map(s => ({
+      numero: s.numero,
+      creditos: s.creditos,
+      materias: s.materias.map(m => ({ ...m, carreraOrigen: carreraActual.id, homologacion: null }))
+    }));
+    buildGlobalMap(semestresMostrar);
+  }
+
   const rowSem = document.createElement('div');
   rowSem.className = 'row-sem';
-
-  carreraActual.semestres.forEach(sem => {
+  for (const sem of semestresMostrar) {
     const col = document.createElement('div');
     col.className = 'sem-col';
     col.id = `semcol-${sem.numero}`;
-
     const visibles = vistaMode === 'disponible'
-      ? sem.materias.filter(m => { const v = calcVisible(m.id); return v !== 'bloqueada'; })
+      ? sem.materias.filter(m => calcVisible(m.id) !== 'bloqueada')
       : sem.materias;
-
     const dispCount = sem.materias.filter(m => calcVisible(m.id) === 'disponible').length;
     const dispBadge = vistaMode === 'completa' && dispCount > 0
       ? `<div class="disponibles-count">${dispCount} disponible${dispCount > 1 ? 's' : ''}</div>` : '';
-
     col.innerHTML = `<div class="sem-head"><div class="sem-num">Semestre ${toRoman(sem.numero)}</div><div class="sem-cred">Cré. ${sem.creditos}</div>${dispBadge}</div><div class="sem-body" id="sb-${sem.numero}"></div>`;
-
     if (vistaMode === 'disponible' && visibles.length === 0) col.classList.add('vd-hidden');
     rowSem.appendChild(col);
-  });
+  }
   canvas.insertBefore(rowSem, canvas.querySelector('svg'));
 
-  carreraActual.semestres.forEach(sem => {
+  for (const sem of semestresMostrar) {
     const body = canvas.querySelector(`#sb-${sem.numero}`);
-    if (!body) return;
+    if (!body) continue;
     const list = vistaMode === 'disponible'
-      ? sem.materias.filter(m => { const v = calcVisible(m.id); return v !== 'bloqueada'; })
+      ? sem.materias.filter(m => calcVisible(m.id) !== 'bloqueada')
       : sem.materias;
     list.forEach(m => {
       const card = makeCard(m);
       body.appendChild(card);
       cardEls[m.id] = card;
     });
-  });
-
-  if (carreraActual.idiomas && carreraActual.idiomas.length > 0) {
-    const rowId = document.createElement('div');
-    rowId.className = 'row-idiomas';
-    const nSem = carreraActual.semestres.length;
-    const byRef = {};
-    carreraActual.idiomas.forEach(m => { if (!byRef[m.semestre_ref]) byRef[m.semestre_ref] = []; byRef[m.semestre_ref].push(m); });
-    let anyVisible = false;
-    for (let i = 1; i <= nSem; i++) {
-      const slot = document.createElement('div');
-      slot.className = 'idioma-slot';
-      const list = byRef[i] || [];
-      const visibles = vistaMode === 'disponible'
-        ? list.filter(m => { const v = calcVisible(m.id); return v !== 'bloqueada'; })
-        : list;
-      visibles.forEach(m => {
-        const card = makeCard(m);
-        slot.appendChild(card);
-        cardEls[m.id] = card;
-        anyVisible = true;
-      });
-      rowId.appendChild(slot);
-    }
-    if (!(vistaMode === 'disponible' && !anyVisible)) {
-      canvas.insertBefore(rowId, canvas.querySelector('svg'));
-    }
   }
 
   seleccionIds.forEach(id => { if (cardEls[id]) cardEls[id].classList.add('sel-check'); });
@@ -438,7 +495,7 @@ function renderStats() {
   let ap = 0, rep = 0, cur = 0, disp = 0, total = 0, credAp = 0, credTot = 0;
   Object.values(materiasMap).forEach(m => {
     total++; credTot += m.creditos;
-    const e = getEstado(m.id);
+    const e = (m.carreraOrigen === carreraActual?.id) ? getEstado(m.id) : getEstadoSegunda(m.id);
     const v = calcVisible(m.id);
     if (e === 'aprobada') { ap++; credAp += m.creditos; }
     if (e === 'reprobada') rep++;
@@ -449,15 +506,154 @@ function renderStats() {
   const modoBadge = vistaMode === 'disponible'
     ? `<div class="vista-badge disponible">✦ Vista: disponible para mí · ${disp} materias</div>`
     : `<div class="vista-badge completa">⊞ Vista: malla completa</div>`;
+  let secondInfo = '';
+  if (segundaCarreraId && segundaCarreraData) {
+    let ap2 = 0, rep2 = 0, cur2 = 0;
+    Object.values(materiasMap).forEach(m => {
+      if (m.carreraOrigen === segundaCarreraId) {
+        const e = getEstadoSegunda(m.id);
+        if (e === 'aprobada') ap2++;
+        if (e === 'reprobada') rep2++;
+        if (e === 'cursando') cur2++;
+      }
+    });
+    secondInfo = `<div class="spill ap">Segunda: ${ap2} ap · ${rep2} rep · ${cur2} cur</div>`;
+  }
   document.getElementById('stats-bar').innerHTML = `
     ${modoBadge}
     <div class="spill ap">${ap} aprobadas · ${credAp} cr.</div>
     <div class="spill rep">${rep} reprobadas</div>
     <div class="spill cur">${cur} cursando</div>
-    <div class="spill tot">${ap}/${total} materias · ${pct}%</div>`;
+    <div class="spill tot">${ap}/${total} materias · ${pct}%</div>
+    ${secondInfo}
+  `;
 }
 
-// ── Delegación de eventos ───────────────────────────────────
+// ── Eventos de usuario (selección, arrastre, etc.) sin cambios ──────
+let seleccionIds = new Set();
+let isDragging = false;
+let dragStarted = false;
+let dragOrigin = null;
+const DRAG_THRESHOLD = 5;
+const selRect = document.createElement('div');
+selRect.id = 'sel-rect';
+document.body.appendChild(selRect);
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulk-bar');
+  const count = seleccionIds.size;
+  if (count === 0) {
+    bar.classList.remove('open');
+    if (!activeId) updateArrowsHighlight(new Set());
+    else updateArrowsHighlight(new Set([activeId]));
+    return;
+  }
+  bar.classList.add('open');
+  document.getElementById('bulk-count').textContent = `${count} materia${count > 1 ? 's' : ''} seleccionada${count > 1 ? 's' : ''}`;
+  updateArrowsHighlight(seleccionIds);
+}
+
+function clearSeleccion() {
+  seleccionIds.clear();
+  seleccionModeBtn = false;
+  const btnSel = document.getElementById('btn-seleccion');
+  if (btnSel) btnSel.classList.remove('active');
+  Object.values(cardEls).forEach(el => el.classList.remove('sel-check'));
+  updateBulkBar();
+}
+
+function hitTestRect(x1, y1, x2, y2) {
+  const left = Math.min(x1, x2), top = Math.min(y1, y2);
+  const right = Math.max(x1, x2), bottom = Math.max(y1, y2);
+  Object.entries(cardEls).forEach(([id, el]) => {
+    const r = el.getBoundingClientRect();
+    const hit = r.left < right && r.right > left && r.top < bottom && r.bottom > top;
+    if (hit) { seleccionIds.add(id); el.classList.add('sel-check'); }
+    else { seleccionIds.delete(id); el.classList.remove('sel-check'); }
+  });
+  updateBulkBar();
+}
+
+function initDragSelect() {
+  const wrapper = document.querySelector('.canvas-wrapper');
+
+  wrapper.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    if (e.target.closest('.mat-card') || e.target.closest('.bulk-bar')) return;
+    isDragging = true;
+    dragStarted = false;
+    dragOrigin = { x: e.clientX, y: e.clientY };
+    selRect.style.cssText = `display:none;left:${e.clientX}px;top:${e.clientY}px;width:0;height:0`;
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragOrigin.x;
+    const dy = e.clientY - dragOrigin.y;
+    if (!dragStarted && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    if (!dragStarted) {
+      dragStarted = true;
+      clearSeleccion();
+      clearActive();
+      selRect.style.display = 'block';
+    }
+    const x1 = Math.min(dragOrigin.x, e.clientX);
+    const y1 = Math.min(dragOrigin.y, e.clientY);
+    const w = Math.abs(dx), h = Math.abs(dy);
+    selRect.style.left = x1 + 'px';
+    selRect.style.top = y1 + 'px';
+    selRect.style.width = w + 'px';
+    selRect.style.height = h + 'px';
+    hitTestRect(x1, y1, x1 + w, y1 + h);
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    selRect.style.display = 'none';
+    dragStarted = false;
+  });
+
+  document.getElementById('btn-seleccion').addEventListener('click', () => {
+    seleccionModeBtn = !seleccionModeBtn;
+    document.getElementById('btn-seleccion').classList.toggle('active', seleccionModeBtn);
+    if (!seleccionModeBtn) clearSeleccion();
+  });
+}
+
+document.getElementById('bulk-bar').addEventListener('click', e => {
+  const btn = e.target.closest('[data-bulk]');
+  if (!btn) return;
+  const action = btn.dataset.bulk;
+  if (action === 'cancel') { clearSeleccion(); return; }
+  for (const id of seleccionIds) {
+    if (action === 'cursando' && !validarLimiteCreditos(id, action)) continue;
+    setEstado(id, action === 'reset' ? null : action);
+  }
+  clearSeleccion();
+  render();
+});
+
+// Restablecer todo (modal)
+document.getElementById('btn-reset-all').addEventListener('click', () => {
+  document.getElementById('modal-reset').classList.add('open');
+});
+document.getElementById('modal-cancel').addEventListener('click', () => {
+  document.getElementById('modal-reset').classList.remove('open');
+});
+document.getElementById('modal-confirm').addEventListener('click', () => {
+  estados = {};
+  saveState();
+  if (segundaCarreraId && segundaCarreraData) {
+    const secondKey = ESTADO_KEY_BASE + segundaCarreraId;
+    localStorage.setItem(secondKey, '{}');
+    cargarEstadosSegundaCarrera();
+  }
+  document.getElementById('modal-reset').classList.remove('open');
+  render();
+});
+
+// Delegación de eventos de clic y contexto
 const pensumCanvas = document.getElementById('pensum-canvas');
 pensumCanvas.addEventListener('click', (e) => {
   const card = e.target.closest('.mat-card');
@@ -488,7 +684,7 @@ function activateCard(id) {
 
   Object.values(cardEls).forEach(el => el.classList.remove('dim', 'highlight-req', 'highlight-dep'));
   const relIds = computeRelIds(new Set([id]));
-  
+
   Object.entries(cardEls).forEach(([eid, el]) => {
     if (!relIds.has(eid)) { el.classList.add('dim'); return; }
     if (eid === id) return;
@@ -503,11 +699,8 @@ function activateCard(id) {
 function clearActive() {
   activeId = null;
   Object.values(cardEls).forEach(el => el.classList.remove('dim', 'highlight-req', 'highlight-dep'));
-  if (seleccionIds.size > 0) {
-    updateArrowsHighlight(seleccionIds);
-  } else {
-    updateArrowsHighlight(new Set());
-  }
+  if (seleccionIds.size > 0) updateArrowsHighlight(seleccionIds);
+  else updateArrowsHighlight(new Set());
   document.getElementById('detail-panel').classList.remove('open');
 }
 
@@ -523,7 +716,7 @@ function showDetail(id) {
     html += `<div class="dp-section"><div class="dp-stitle">Prerrequisitos</div>`;
     m.prerreqs.forEach(pid => {
       const pm = materiasMap[pid];
-      const ok = getEstado(pid) === 'aprobada';
+      const ok = (pm?.carreraOrigen === carreraActual?.id) ? getEstado(pid) === 'aprobada' : getEstadoSegunda(pid) === 'aprobada';
       html += `<div class="dp-row ${ok ? 'ok' : 'fail'}">${ok ? '✓' : '✗'} ${pm ? pm.nombre : pid} <span style="margin-left:auto;font-size:9px;opacity:0.7">${pm ? pm.codigo : ''}</span></div>`;
     });
     html += `</div>`;
@@ -535,7 +728,7 @@ function showDetail(id) {
     html += `<div class="dp-section"><div class="dp-stitle">Correquisitos</div>`;
     m.correqs.forEach(cid => {
       const cm = materiasMap[cid];
-      const ce = getEstado(cid);
+      const ce = (cm?.carreraOrigen === carreraActual?.id) ? getEstado(cid) : getEstadoSegunda(cid);
       const ok = ce === 'cursando' || ce === 'aprobada';
       html += `<div class="dp-row ${ok ? 'co-ok' : 'co-fail'}">${ok ? '✓' : '✗'} ${cm ? cm.nombre : cid} <span style="margin-left:auto;font-size:9px;opacity:0.7">${cm ? cm.codigo : ''}</span></div>`;
     });
@@ -555,7 +748,6 @@ function showDetail(id) {
   document.getElementById('detail-panel').classList.add('open');
 }
 
-// ── Menú contextual ──────────────────────────────────────────
 function showCtx(x, y) {
   const menu = document.getElementById('ctx-menu');
   menu.style.display = 'block';
@@ -568,12 +760,30 @@ document.getElementById('ctx-menu').addEventListener('click', e => {
   const item = e.target.closest('.ctx-item');
   if (!item || !ctxTarget) return;
   const action = item.dataset.action;
-  setEstado(ctxTarget, action === 'reset' ? null : action);
+  const materia = materiasMap[ctxTarget];
+  if (!materia) return;
+  if (materia.carreraOrigen === carreraActual?.id) {
+    setEstado(ctxTarget, action === 'reset' ? null : action);
+  } else if (segundaCarreraId && materia.carreraOrigen === segundaCarreraId) {
+    const secondKey = ESTADO_KEY_BASE + segundaCarreraId;
+    let secondEstadosLocal = {};
+    try { secondEstadosLocal = JSON.parse(localStorage.getItem(secondKey) || '{}'); } catch { }
+    if (action === 'reset') delete secondEstadosLocal[ctxTarget];
+    else secondEstadosLocal[ctxTarget] = action;
+    localStorage.setItem(secondKey, JSON.stringify(secondEstadosLocal));
+    if (mapaHomologaciones[segundaCarreraId] && mapaHomologaciones[segundaCarreraId][ctxTarget]) {
+      const hom = mapaHomologaciones[segundaCarreraId][ctxTarget];
+      if (action === 'reset') delete estados[hom];
+      else estados[hom] = action;
+      saveState();
+    }
+    cargarEstadosSegundaCarrera();
+  }
   document.getElementById('ctx-menu').style.display = 'none';
   render();
 });
 
-// ── Eventos globales optimizados ─────────────────────────────
+// ── Eventos globales ────────────────────────────────────────────────
 document.addEventListener('click', e => {
   document.getElementById('ctx-menu').style.display = 'none';
   if (!e.target.closest('.mat-card') &&
@@ -623,7 +833,7 @@ wrapperScroll.addEventListener('scroll', () => {
   }
 });
 
-// ── Buscador ─────────────────────────────────────────────────
+// ── Buscador ────────────────────────────────────────────────────────
 function applySearch(q) {
   searchQuery = q.trim().toLowerCase();
   const svg = document.getElementById('arrows-svg');
@@ -666,72 +876,107 @@ document.getElementById('search-clear').addEventListener('click', () => {
   document.getElementById('search-input').focus();
 });
 
-// ── Limpieza completa al cambiar de carrera ─────────────────
+// ── Cambio de carrera y segunda carrera (sin restricción de primer semestre) ──
 function clearAllSelectionAndActive() {
-  // Limpiar selecciones múltiples
   clearSeleccion();
-  // Limpiar materia activa
   clearActive();
-  // Limpiar modo selección por botón
   seleccionModeBtn = false;
   const btnSel = document.getElementById('btn-seleccion');
   if (btnSel) btnSel.classList.remove('active');
-  // Limpiar búsqueda
   document.getElementById('search-input').value = '';
   applySearch('');
-  // Cerrar menú contextual si está abierto
   document.getElementById('ctx-menu').style.display = 'none';
-  // Cerrar modal si está abierto
   document.getElementById('modal-reset').classList.remove('open');
 }
 
-// ── Cambio de carrera ───────────────────────────────────────
 function setCarrera(id) {
-  // Guardar la anterior si existe (para no perder cambios sin guardar, pero ya se guardan al modificar)
-  // Limpiar toda la interfaz antes de cambiar
   clearAllSelectionAndActive();
-  
   carreraActual = PENSUMS.find(c => c.id === id);
   if (!carreraActual) return;
-  
-  // Cargar los estados específicos de esta carrera
   loadState();
-  
-  buildMap(carreraActual);
+  const savedSecond = localStorage.getItem(SEGUNDA_CARRERA_KEY);
+  if (savedSecond && savedSecond !== id && PENSUMS.find(c => c.id === savedSecond)) {
+    setSegundaCarrera(savedSecond);
+  } else {
+    setSegundaCarrera('');
+  }
   document.getElementById('h-titulo').textContent = carreraActual.nombre.split('—')[0].trim();
   document.getElementById('h-sub').textContent = (carreraActual.nombre.split('—')[1] || '').trim() + (carreraActual.creditos_totales ? ` · ${carreraActual.creditos_totales} créditos totales` : '');
   render();
 }
 
-// ── Init ─────────────────────────────────────────────────────
+function setSegundaCarrera(secondId) {
+  const sel2 = document.getElementById('segunda-carrera-select');
+
+  // Validación de compatibilidad (sin restricción de primer semestre)
+  if (secondId && CARRERAS_COMPATIBLES[carreraActual.id] && !CARRERAS_COMPATIBLES[carreraActual.id].includes(secondId)) {
+    alert(`❌ La carrera ${PENSUMS.find(c => c.id === secondId)?.nombre} no es compatible con ${carreraActual.nombre} para doble programa.`);
+    sel2.value = segundaCarreraId || '';
+    return;
+  }
+
+  if (!secondId) {
+    segundaCarreraId = null;
+    segundaCarreraData = null;
+    secondEstados = {};
+    pensumFusionado = null;
+    const semPrinc = carreraActual.semestres.map(s => ({
+      numero: s.numero,
+      creditos: s.creditos,
+      materias: s.materias.map(m => ({ ...m, carreraOrigen: carreraActual.id, homologacion: null }))
+    }));
+    buildGlobalMap(semPrinc);
+    mapaHomologaciones = {};
+    localStorage.setItem(SEGUNDA_CARRERA_KEY, '');
+    render();
+    return;
+  }
+
+  segundaCarreraId = secondId;
+  segundaCarreraData = PENSUMS.find(c => c.id === segundaCarreraId);
+  if (!segundaCarreraData) {
+    segundaCarreraId = null;
+    return;
+  }
+  cargarEstadosSegundaCarrera();
+  pensumFusionado = fusionarPensums(carreraActual, segundaCarreraData);
+  buildGlobalMap(pensumFusionado);
+  localStorage.setItem(SEGUNDA_CARRERA_KEY, segundaCarreraId);
+  render();
+}
+
+// ── Inicialización ──────────────────────────────────────────────────
 function init() {
-  // Cargar vista guardada
   vistaMode = localStorage.getItem(VISTA_KEY) || 'completa';
   document.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === vistaMode));
-  
-  // Llenar selector de carreras
+
   const sel = document.getElementById('carrera-select');
+  const sel2 = document.getElementById('segunda-carrera-select');
+
   PENSUMS.forEach(c => {
     const opt = document.createElement('option');
     opt.value = c.id;
     opt.textContent = c.nombre;
     sel.appendChild(opt);
+    const opt2 = document.createElement('option');
+    opt2.value = c.id;
+    opt2.textContent = c.nombre;
+    sel2.appendChild(opt2);
   });
-  
-  // Cargar última carrera seleccionada
+
   const savedCarrera = localStorage.getItem(CARRERA_KEY) || PENSUMS[0]?.id;
   sel.value = savedCarrera || PENSUMS[0]?.id;
-  
-  // Inicializar la carrera (esto llama a loadState internamente)
   setCarrera(sel.value);
-  
-  // Evento cambio de carrera
+
   sel.addEventListener('change', () => {
-    const newId = sel.value;
-    localStorage.setItem(CARRERA_KEY, newId);
-    setCarrera(newId);
+    localStorage.setItem(CARRERA_KEY, sel.value);
+    setCarrera(sel.value);
   });
-  
+
+  sel2.addEventListener('change', () => {
+    setSegundaCarrera(sel2.value);
+  });
+
   initDragSelect();
 }
 

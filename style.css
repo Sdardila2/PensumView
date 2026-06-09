@@ -49,7 +49,8 @@
     padding: 0;
 }
 
-html, body {
+html,
+body {
     height: 100%;
 }
 
@@ -73,6 +74,8 @@ header {
     position: sticky;
     top: 0;
     z-index: 200;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
 .h-title {
@@ -91,9 +94,11 @@ header {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
 }
 
-select#carrera-select {
+select#carrera-select,
+select#segunda-carrera-select {
     background: rgba(255, 255, 255, 0.12);
     border: 1px solid rgba(255, 255, 255, 0.25);
     color: white;
@@ -103,10 +108,11 @@ select#carrera-select {
     font-size: 12px;
     cursor: pointer;
     outline: none;
-    max-width: 260px;
+    max-width: 220px;
 }
 
-select#carrera-select option {
+select#carrera-select option,
+select#segunda-carrera-select option {
     background: #003865;
     color: white;
 }
@@ -248,14 +254,6 @@ select#carrera-select option {
     display: none;
 }
 
-.sem-col.vd-empty .sem-body {
-    min-height: 20px;
-}
-
-.mat-card.vd-hidden {
-    display: none;
-}
-
 .disponibles-count {
     font-size: 10px;
     color: #15803d;
@@ -278,7 +276,7 @@ select#carrera-select option {
 
 .pensum-canvas {
     position: relative;
-    isolation: isolate; /* contexto de apilamiento aislado */
+    isolation: isolate;
     display: flex;
     flex-direction: column;
     gap: 0;
@@ -336,38 +334,6 @@ select#carrera-select option {
     background: var(--bg);
 }
 
-.row-idiomas {
-    border-top: 2px dashed var(--border);
-    margin-top: 8px;
-    display: flex;
-    flex-direction: row;
-    gap: 0;
-}
-
-.idioma-slot {
-    flex: 1 1 0;
-    min-width: 120px;
-    border-right: 1px solid var(--border);
-    padding: 6px;
-    background: var(--bg);
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.idioma-slot:last-child {
-    border-right: none;
-}
-
-.idioma-label {
-    font-size: 10px;
-    color: var(--muted);
-    font-weight: 500;
-    padding: 4px 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-}
-
 .mat-card {
     border-radius: 5px;
     padding: 6px 7px;
@@ -375,15 +341,15 @@ select#carrera-select option {
     border: 1.5px solid;
     transition: transform 0.1s, opacity 0.1s;
     position: relative;
-    z-index: 2; /* Por encima del SVG */
+    z-index: 2;
     user-select: none;
     will-change: transform;
-    background: white; /* Fondo blanco sólido para todas las tarjetas, evita transparencia */
+    background: white;
 }
 
 .mat-card:hover {
     transform: scale(1.02);
-    z-index: 10; /* hover por encima de otras tarjetas */
+    z-index: 10;
 }
 
 .mat-card.dim {
@@ -400,7 +366,6 @@ select#carrera-select option {
     outline-offset: 1px;
 }
 
-/* Colores por categoría (sobreescriben el fondo blanco) */
 .mat-card.matematicas {
     background: var(--cat-matematicas-bg);
     border-color: var(--cat-matematicas-border);
@@ -441,7 +406,6 @@ select#carrera-select option {
     border-color: var(--cat-grado-border);
 }
 
-/* Estados (aprobada, reprobada, cursando) también sobreescriben */
 .mat-card.estado-aprobada {
     background: var(--estado-aprobada-bg) !important;
     border-color: var(--estado-aprobada-border) !important;
@@ -457,6 +421,10 @@ select#carrera-select option {
     border-color: var(--estado-cursando-border) !important;
 }
 
+.mat-card.segunda-carrera {
+    border-left: 4px solid #f59e0b;
+}
+
 .mat-codigo {
     font-size: 9px;
     font-weight: 600;
@@ -465,97 +433,69 @@ select#carrera-select option {
     margin-bottom: 2px;
 }
 
-.mat-card.matematicas .mat-codigo {
+.mat-card.matematicas .mat-codigo,
+.mat-card.matematicas .mat-nombre,
+.mat-card.matematicas .mat-cred {
     color: var(--cat-matematicas-text);
 }
 
-.mat-card.ciencias .mat-codigo {
+.mat-card.ciencias .mat-codigo,
+.mat-card.ciencias .mat-nombre,
+.mat-card.ciencias .mat-cred {
     color: var(--cat-ciencias-text);
 }
 
-.mat-card.programacion .mat-codigo {
+.mat-card.programacion .mat-codigo,
+.mat-card.programacion .mat-nombre,
+.mat-card.programacion .mat-cred {
     color: var(--cat-programacion-text);
 }
 
-.mat-card.sistemas .mat-codigo {
+.mat-card.sistemas .mat-codigo,
+.mat-card.sistemas .mat-nombre,
+.mat-card.sistemas .mat-cred {
     color: var(--cat-sistemas-text);
 }
 
-.mat-card.electiva .mat-codigo {
+.mat-card.electiva .mat-codigo,
+.mat-card.electiva .mat-nombre,
+.mat-card.electiva .mat-cred {
     color: var(--cat-electiva-text);
 }
 
-.mat-card.humanidades .mat-codigo {
+.mat-card.humanidades .mat-codigo,
+.mat-card.humanidades .mat-nombre,
+.mat-card.humanidades .mat-cred {
     color: var(--cat-humanidades-text);
 }
 
-.mat-card.idiomas .mat-codigo {
+.mat-card.idiomas .mat-codigo,
+.mat-card.idiomas .mat-nombre,
+.mat-card.idiomas .mat-cred {
     color: var(--cat-idiomas-text);
 }
 
-.mat-card.grado .mat-codigo {
+.mat-card.grado .mat-codigo,
+.mat-card.grado .mat-nombre,
+.mat-card.grado .mat-cred {
     color: var(--cat-grado-text);
 }
 
-.mat-card.estado-aprobada .mat-codigo {
+.mat-card.estado-aprobada .mat-codigo,
+.mat-card.estado-aprobada .mat-nombre,
+.mat-card.estado-aprobada .mat-cred {
     color: var(--estado-aprobada-text);
 }
 
-.mat-card.estado-reprobada .mat-codigo {
+.mat-card.estado-reprobada .mat-codigo,
+.mat-card.estado-reprobada .mat-nombre,
+.mat-card.estado-reprobada .mat-cred {
     color: var(--estado-reprobada-text);
 }
 
-.mat-card.estado-cursando .mat-codigo {
-    color: var(--estado-cursando-text);
-}
-
-.mat-nombre {
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1.3;
-}
-
-.mat-card.matematicas .mat-nombre {
-    color: var(--cat-matematicas-text);
-}
-
-.mat-card.ciencias .mat-nombre {
-    color: var(--cat-ciencias-text);
-}
-
-.mat-card.programacion .mat-nombre {
-    color: var(--cat-programacion-text);
-}
-
-.mat-card.sistemas .mat-nombre {
-    color: var(--cat-sistemas-text);
-}
-
-.mat-card.electiva .mat-nombre {
-    color: var(--cat-electiva-text);
-}
-
-.mat-card.humanidades .mat-nombre {
-    color: var(--cat-humanidades-text);
-}
-
-.mat-card.idiomas .mat-nombre {
-    color: var(--cat-idiomas-text);
-}
-
-.mat-card.grado .mat-nombre {
-    color: var(--cat-grado-text);
-}
-
-.mat-card.estado-aprobada .mat-nombre {
-    color: var(--estado-aprobada-text);
-}
-
-.mat-card.estado-reprobada .mat-nombre {
-    color: var(--estado-reprobada-text);
-}
-
-.mat-card.estado-cursando .mat-nombre {
+.mat-card.estado-cursando .mat-codigo,
+.mat-card.estado-cursando .mat-nombre,
+.mat-card.estado-cursando .mat-cred {
     color: var(--estado-cursando-text);
 }
 
@@ -563,50 +503,6 @@ select#carrera-select option {
     font-size: 9px;
     margin-top: 3px;
     opacity: 0.65;
-}
-
-.mat-card.matematicas .mat-cred {
-    color: var(--cat-matematicas-text);
-}
-
-.mat-card.ciencias .mat-cred {
-    color: var(--cat-ciencias-text);
-}
-
-.mat-card.programacion .mat-cred {
-    color: var(--cat-programacion-text);
-}
-
-.mat-card.sistemas .mat-cred {
-    color: var(--cat-sistemas-text);
-}
-
-.mat-card.electiva .mat-cred {
-    color: var(--cat-electiva-text);
-}
-
-.mat-card.humanidades .mat-cred {
-    color: var(--cat-humanidades-text);
-}
-
-.mat-card.idiomas .mat-cred {
-    color: var(--cat-idiomas-text);
-}
-
-.mat-card.grado .mat-cred {
-    color: var(--cat-grado-text);
-}
-
-.mat-card.estado-aprobada .mat-cred {
-    color: var(--estado-aprobada-text);
-}
-
-.mat-card.estado-reprobada .mat-cred {
-    color: var(--estado-reprobada-text);
-}
-
-.mat-card.estado-cursando .mat-cred {
-    color: var(--estado-cursando-text);
 }
 
 .mat-bloqueada-badge {
@@ -620,6 +516,19 @@ select#carrera-select option {
     opacity: 0.7;
 }
 
+.origin-badge {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    font-size: 9px;
+    background: #f59e0b;
+    color: white;
+    border-radius: 10px;
+    padding: 1px 5px;
+    font-weight: bold;
+    opacity: 0.8;
+}
+
 svg.arrows {
     position: absolute;
     top: 0;
@@ -628,7 +537,7 @@ svg.arrows {
     height: 100%;
     pointer-events: none;
     overflow: visible;
-    z-index: 1; /* Por debajo de las tarjetas (z-index: 2) */
+    z-index: 1;
 }
 
 .ctx-menu {
@@ -779,7 +688,6 @@ svg.arrows {
 }
 
 #search-input {
-    background: #003865;
     padding: 4px 8px;
     border-radius: 6px;
     border: 1px solid var(--border);
@@ -790,7 +698,6 @@ svg.arrows {
 }
 
 #search-clear {
-    background: #003865;
     background: none;
     border: none;
     cursor: pointer;
@@ -799,12 +706,10 @@ svg.arrows {
 }
 
 .search-match {
-    background: #003865;
-    outline: 2px solid #60a5fa;
+    outline: 2px solid #60a5fa !important;
     outline-offset: 2px;
 }
 
-/* ── Botones de acción en header ─────────────────────────── */
 .h-actions {
     display: flex;
     align-items: center;
@@ -846,7 +751,6 @@ svg.arrows {
     color: #fca5a5;
 }
 
-/* ── Rectángulo de selección por arrastre ────────────────── */
 #sel-rect {
     display: none;
     position: fixed;
@@ -867,7 +771,6 @@ svg.arrows {
     box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
 }
 
-/* ── Barra de acciones masivas ───────────────────────────── */
 .bulk-bar {
     position: fixed;
     bottom: -80px;
@@ -963,7 +866,6 @@ svg.arrows {
     color: #94a3b8;
 }
 
-/* ── Modal restablecer todo ──────────────────────────────── */
 .modal-overlay {
     display: none;
     position: fixed;
@@ -1030,10 +932,4 @@ svg.arrows {
 .modal-btn.danger {
     background: #ef4444;
     color: white;
-}
-
-/* ── search-match ────────────────────────────────────────── */
-.search-match {
-    outline: 2px solid #60a5fa !important;
-    outline-offset: 2px;
 }
