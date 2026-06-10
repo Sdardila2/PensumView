@@ -285,6 +285,21 @@ function makeCard(m) {
 let positionsCache = null;
 let positionsDirty = true;
 
+const PIXEL_RATIO = window.devicePixelRatio || 1;
+const crispPx = value => Math.round(value * PIXEL_RATIO) / PIXEL_RATIO;
+
+function syncSvgPixelSize(svg, canvas) {
+  const width = Math.ceil(canvas.scrollWidth || canvas.getBoundingClientRect().width || 0);
+  const height = Math.ceil(canvas.scrollHeight || canvas.getBoundingClientRect().height || 0);
+  if (width > 0 && height > 0) {
+    svg.setAttribute('width', String(width));
+    svg.setAttribute('height', String(height));
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.style.width = `${width}px`;
+    svg.style.height = `${height}px`;
+  }
+}
+
 function invalidatePositions() {
   positionsDirty = true;
 }
@@ -293,6 +308,7 @@ function ensureArrowsLayer() {
   const canvas = document.getElementById('pensum-canvas');
   const svg = document.getElementById('arrows-svg');
   if (!canvas || !svg) return;
+  syncSvgPixelSize(svg, canvas);
 
   // Capa intermedia: visible sobre el fondo, pero debajo de las tarjetas.
   // No se recalcula en hover/highlight para que las flechas no cambien de tamaño.
@@ -357,17 +373,19 @@ function drawArrows() {
   const positions = {};
   for (const [id, el] of Object.entries(cardEls)) {
     const rect = el.getBoundingClientRect();
-    const left = rect.left - canvasRect.left + scrollLeft;
-    const top = rect.top - canvasRect.top + scrollTop;
+    const left = crispPx(rect.left - canvasRect.left + scrollLeft);
+    const top = crispPx(rect.top - canvasRect.top + scrollTop);
+    const width = crispPx(rect.width);
+    const height = crispPx(rect.height);
     positions[id] = {
-      x: left + rect.width / 2,
-      y: top + rect.height / 2,
+      x: crispPx(left + width / 2),
+      y: crispPx(top + height / 2),
       left,
-      right: left + rect.width,
+      right: crispPx(left + width),
       top,
-      bottom: top + rect.height,
-      width: rect.width,
-      height: rect.height
+      bottom: crispPx(top + height),
+      width,
+      height
     };
   }
   positionsCache = positions;
@@ -386,12 +404,16 @@ function drawArrowsFromCache(positions) {
     (m.prerreqs || []).forEach(pid => {
       const from = positions[pid];
       if (!from) return;
-      const { sx, sy, tx, ty } = getArrowEndpoints(from, to);
-      const mx = (sx + tx) / 2;
+      const endpoints = getArrowEndpoints(from, to);
+      const sx = crispPx(endpoints.sx);
+      const sy = crispPx(endpoints.sy);
+      const tx = crispPx(endpoints.tx);
+      const ty = crispPx(endpoints.ty);
+      const mx = crispPx((sx + tx) / 2);
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`);
       path.setAttribute('stroke', '#94a3b8');
-      path.setAttribute('stroke-width', '1.6');
+      path.setAttribute('stroke-width', '2');
       path.setAttribute('fill', 'none');
       path.setAttribute('opacity', '0.5');
       path.setAttribute('vector-effect', 'non-scaling-stroke');
@@ -433,10 +455,10 @@ function updateArrowsHighlight(activeIds) {
       p.setAttribute('opacity', '0.5');
       if (p.dataset.type === 'pre') {
         p.setAttribute('stroke', '#94a3b8');
-        p.setAttribute('stroke-width', '1.6');
+        p.setAttribute('stroke-width', '2');
       } else if (p.dataset.type === 'co') {
         p.setAttribute('stroke', '#f59e0b');
-        p.setAttribute('stroke-width', '1.6');
+        p.setAttribute('stroke-width', '2');
       }
     });
     return;
@@ -445,10 +467,10 @@ function updateArrowsHighlight(activeIds) {
     p.setAttribute('opacity', '0.25');
     if (p.dataset.type === 'pre') {
       p.setAttribute('stroke', '#94a3b8');
-      p.setAttribute('stroke-width', '1.6');
+      p.setAttribute('stroke-width', '2');
     } else if (p.dataset.type === 'co') {
       p.setAttribute('stroke', '#f59e0b');
-      p.setAttribute('stroke-width', '1.6');
+      p.setAttribute('stroke-width', '2');
     }
   });
   paths.forEach(path => {
@@ -460,10 +482,10 @@ function updateArrowsHighlight(activeIds) {
       path.setAttribute('opacity', '1');
       if (path.dataset.type === 'pre') {
         path.setAttribute('stroke', '#3b82f6');
-        path.setAttribute('stroke-width', '1.6');
+        path.setAttribute('stroke-width', '2');
       } else if (path.dataset.type === 'co') {
         path.setAttribute('stroke', '#ea580c');
-        path.setAttribute('stroke-width', '1.6');
+        path.setAttribute('stroke-width', '2');
       }
     }
   });
@@ -883,7 +905,7 @@ function applySearch(q) {
 
   if (!searchQuery) {
     Object.values(cardEls).forEach(el => el.classList.remove('dim', 'search-match'));
-    if (svg) svg.querySelectorAll('path').forEach(p => { p.setAttribute('opacity', '0.5'); p.setAttribute('stroke-width', '1.6'); });
+    if (svg) svg.querySelectorAll('path').forEach(p => { p.setAttribute('opacity', '0.5'); p.setAttribute('stroke-width', '2'); });
     if (activeId) updateArrowsHighlight(new Set([activeId]));
     else if (seleccionIds.size) updateArrowsHighlight(seleccionIds);
     else updateArrowsHighlight(new Set());
@@ -903,7 +925,7 @@ function applySearch(q) {
     else el.classList.add('dim');
   });
 
-  if (svg) svg.querySelectorAll('path').forEach(p => { p.setAttribute('opacity', '0.05'); p.setAttribute('stroke-width', '1.6'); });
+  if (svg) svg.querySelectorAll('path').forEach(p => { p.setAttribute('opacity', '0.05'); p.setAttribute('stroke-width', '2'); });
 
   if (matchIds.size === 1) {
     const id = [...matchIds][0];

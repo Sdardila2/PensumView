@@ -339,17 +339,19 @@ select#segunda-carrera-select option {
     padding: 6px 7px;
     cursor: pointer;
     border: 1.5px solid;
-    transition: transform 0.1s, opacity 0.1s;
+    transition: box-shadow 0.12s ease, opacity 0.12s ease, border-color 0.12s ease, background-color 0.12s ease;
     position: relative;
     z-index: 2;
     user-select: none;
-    will-change: transform;
     background: white;
+    transform: none;
+    will-change: auto;
 }
 
 .mat-card:hover {
-    transform: scale(1.02);
+    transform: none;
     z-index: 10;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.16), 0 6px 14px rgba(15, 23, 42, 0.14);
 }
 
 .mat-card.dim {
@@ -813,16 +815,20 @@ svg.arrows {
     cursor: pointer;
     font-family: inherit;
     border: none;
-    transition: opacity 0.15s, transform 0.1s;
+    transition: opacity 0.15s ease, box-shadow 0.12s ease;
+    transform: none;
+    will-change: auto;
 }
 
 .bulk-btn:hover {
-    opacity: 0.85;
-    transform: scale(1.03);
+    opacity: 0.92;
+    transform: none;
+    box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.08);
 }
 
 .bulk-btn:active {
-    transform: scale(0.97);
+    transform: none;
+    box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.18);
 }
 
 .bulk-btn.ap {
@@ -1096,3 +1102,71 @@ svg.arrows {
 .cc-stat-val.red { color: #dc2626; }
 .cc-stat-val.blue { color: #1d4ed8; }
 .cc-stat-lbl { color: #64748b; font-size: 10px; }
+
+
+/* ─────────────────────────────────────────────────────────────
+   Nitidez global / corrección anti-borrosidad
+   - Evita escalados CSS fraccionarios en tarjetas y botones.
+   - Mejora el rasterizado de texto y SVG.
+   - Mantiene los efectos visuales usando sombras/outline en vez de scale().
+   ───────────────────────────────────────────────────────────── */
+html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: geometricPrecision;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: geometricPrecision;
+}
+
+#pensum-canvas,
+.pensum-canvas,
+.mat-card,
+.view-btn,
+.action-btn,
+.bulk-btn,
+.ctx-menu {
+    backface-visibility: visible;
+}
+
+.mat-card {
+    transform: none !important;
+    will-change: auto !important;
+    transition: box-shadow 0.12s ease, opacity 0.12s ease, border-color 0.12s ease, background-color 0.12s ease !important;
+}
+
+.bulk-btn {
+    transform: none !important;
+    will-change: auto !important;
+    transition: opacity 0.15s ease, box-shadow 0.12s ease !important;
+}
+
+#arrows-svg,
+svg.arrows {
+    shape-rendering: geometricPrecision;
+    text-rendering: geometricPrecision;
+}
+
+#arrows-svg path,
+svg.arrows path {
+    vector-effect: non-scaling-stroke;
+    shape-rendering: geometricPrecision;
+}
+
+.mat-card:hover,
+.bulk-btn:hover,
+.bulk-btn:active {
+    transform: none !important;
+}
+
+img,
+svg {
+    image-rendering: auto;
+}
