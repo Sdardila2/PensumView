@@ -30,6 +30,9 @@
         <button class="action-btn" id="btn-seleccion" title="Activar modo selección (o Shift+clic)">
           ☑ Seleccionar
         </button>
+        <button class="action-btn transfer" id="btn-cambio-carrera" title="Simular cambio de carrera con homologación">
+          ⇄ Cambio de carrera
+        </button>
         <button class="action-btn danger" id="btn-reset-all" title="Restablecer todos los estados">
           ↺ Restablecer todo
         </button>
@@ -119,6 +122,46 @@
       <button class="bulk-btn rst" data-bulk="reset">↺ Restablecer</button>
     </div>
     <button class="bulk-cancel" data-bulk="cancel">✕ Cancelar</button>
+  </div>
+
+  <!-- Modal cambio de carrera -->
+  <div class="modal-overlay" id="modal-cambio-carrera">
+    <div class="modal-box modal-cambio-box">
+      <div class="modal-title">⇄ Cambio de carrera</div>
+      <div class="modal-body">Selecciona tu situación actual y la carrera destino. Las materias equivalentes se homologarán automáticamente.</div>
+
+      <div class="cc-form">
+        <div class="cc-field">
+          <label class="cc-label">Carrera actual</label>
+          <select id="cc-origen" class="cc-select"></select>
+        </div>
+        <div class="cc-field">
+          <label class="cc-label">Semestre actual cursado</label>
+          <select id="cc-semestre" class="cc-select"></select>
+        </div>
+        <div class="cc-field">
+          <label class="cc-label">Materias aprobadas</label>
+          <div class="cc-materias-list" id="cc-materias-list">
+            <span class="cc-empty">Selecciona la carrera y semestre primero.</span>
+          </div>
+        </div>
+        <div class="cc-field">
+          <label class="cc-label">Carrera destino</label>
+          <select id="cc-destino" class="cc-select"></select>
+        </div>
+      </div>
+
+      <div id="cc-preview" class="cc-preview" style="display:none">
+        <div class="cc-preview-title">Resultado de homologación</div>
+        <div id="cc-preview-body"></div>
+      </div>
+
+      <div class="modal-btns" style="margin-top:16px">
+        <button class="modal-btn secondary" id="cc-cancel">Cancelar</button>
+        <button class="modal-btn" id="cc-preview-btn" style="background:#3b82f6;color:white">Ver homologación</button>
+        <button class="modal-btn" id="cc-aplicar" style="background:#10b981;color:white;display:none">✓ Aplicar cambio</button>
+      </div>
+    </div>
   </div>
 
   <!-- Modal de confirmación restablecer todo -->

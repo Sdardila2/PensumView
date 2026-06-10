@@ -981,3 +981,282 @@ function init() {
 }
 
 init();
+// ── Sistema de Cambio de Carrera ─────────────────────────────────────────
+
+let ccMateriasSeleccionadas = new Set();
+let ccResultadoHomologacion = null;
+
+function abrirModalCambioCarrera() {
+  const modal = document.getElementById('modal-cambio-carrera');
+  const selOrigen = document.getElementById('cc-origen');
+  const selDestino = document.getElementById('cc-destino');
+  const selSemestre = document.getElementById('cc-semestre');
+
+  // Poblar selects de carrera
+  selOrigen.innerHTML = '';
+  selDestino.innerHTML = '';
+  PENSUMS.forEach(c => {
+    selOrigen.innerHTML += `<option value="${c.id}">${c.nombre}</option>`;
+    selDestino.innerHTML += `<option value="${c.id}">${c.nombre}</option>`;
+  });
+
+  // Por defecto: origen = carrera actual, destino = otra
+  if (carreraActual) {
+    selOrigen.value = carreraActual.id;
+    const otraCarrera = PENSUMS.find(c => c.id !== carreraActual.id);
+    if (otraCarrera) selDestino.value = otraCarrera.id;
+  }
+
+  ccMateriasSeleccionadas = new Set();
+  ccResultadoHomologacion = null;
+
+  document.getElementById('cc-preview').style.display = 'none';
+  document.getElementById('cc-aplicar').style.display = 'none';
+  document.getElementById('cc-preview-btn').style.display = '';
+
+  actualizarSemestresCC();
+  actualizarMateriasCC();
+  modal.classList.add('open');
+}
+
+function actualizarSemestresCC() {
+  const origenId = document.getElementById('cc-origen').value;
+  const pensum = PENSUMS.find(c => c.id === origenId);
+  const selSemestre = document.getElementById('cc-semestre');
+  selSemestre.innerHTML = '';
+  if (!pensum) return;
+  pensum.semestres.forEach(s => {
+    selSemestre.innerHTML += `<option value="${s.numero}">Semestre ${s.numero}</option>`;
+  });
+  // Por defecto: último semestre con materias aprobadas en el estado actual, o semestre 1
+  const maxSem = carreraActual?.id === origenId
+    ? (() => {
+        let max = 1;
+        for (const s of pensum.semestres) {
+          const tieneAprobadas = s.materias.some(m => getEstado(m.id) === 'aprobada');
+          if (tieneAprobadas) max = s.numero;
+        }
+        return max;
+      })()
+    : 1;
+  selSemestre.value = maxSem;
+}
+
+function actualizarMateriasCC() {
+  const origenId = document.getElementById('cc-origen').value;
+  const semestreNum = parseInt(document.getElementById('cc-semestre').value);
+  const pensum = PENSUMS.find(c => c.id === origenId);
+  const contenedor = document.getElementById('cc-materias-list');
+  ccMateriasSeleccionadas = new Set();
+
+  if (!pensum) {
+    contenedor.innerHTML = '<span class="cc-empty">Selecciona una carrera.</span>';
+    return;
+  }
+
+  // Recopilar todas las materias hasta el semestre seleccionado
+  const materiasHasta = [];
+  for (const s of pensum.semestres) {
+    if (s.numero <= semestreNum) {
+      materiasHasta.push(...s.materias.map(m => ({ ...m, semNum: s.numero })));
+    }
+  }
+
+  if (materiasHasta.length === 0) {
+    contenedor.innerHTML = '<span class="cc-empty">No hay materias disponibles.</span>';
+    return;
+  }
+
+  // Pre-seleccionar las que ya están aprobadas en la carrera actual
+  if (carreraActual?.id === origenId) {
+    materiasHasta.forEach(m => {
+      if (getEstado(m.id) === 'aprobada') ccMateriasSeleccionadas.add(m.id);
+    });
+  }
+
+  // Renderizar chips
+  contenedor.innerHTML = '';
+  materiasHasta.forEach(m => {
+    const chip = document.createElement('div');
+    chip.className = 'cc-chip' + (ccMateriasSeleccionadas.has(m.id) ? ' selected' : '');
+    chip.dataset.id = m.id;
+    chip.title = `Sem ${m.semNum} · ${m.creditos} créditos`;
+    chip.textContent = `${m.codigo} ${m.nombre}`;
+    chip.addEventListener('click', () => {
+      if (ccMateriasSeleccionadas.has(m.id)) {
+        ccMateriasSeleccionadas.delete(m.id);
+        chip.classList.remove('selected');
+      } else {
+        ccMateriasSeleccionadas.add(m.id);
+        chip.classList.add('selected');
+      }
+    });
+    contenedor.appendChild(chip);
+  });
+}
+
+function calcularHomologacion() {
+  const origenId = document.getElementById('cc-origen').value;
+  const destinoId = document.getElementById('cc-destino').value;
+
+  if (origenId === destinoId) {
+    alert('La carrera origen y destino deben ser diferentes.');
+    return null;
+  }
+
+  const pensumOrigen = PENSUMS.find(c => c.id === origenId);
+  const pensumDestino = PENSUMS.find(c => c.id === destinoId);
+  if (!pensumOrigen || !pensumDestino) return null;
+
+  const materiasOrigen = pensumOrigen.semestres.flatMap(s => s.materias);
+  const materiasDestino = pensumDestino.semestres.flatMap(s => s.materias);
+
+  const resultados = [];
+  let homologadas = 0;
+  let noHomologadas = 0;
+
+  for (const idAprobado of ccMateriasSeleccionadas) {
+    const mOrigen = materiasOrigen.find(m => m.id === idAprobado);
+    if (!mOrigen) continue;
+
+    // Buscar equivalente en destino
+    let mejorMatch = null;
+    let mejorSim = 0;
+    for (const mDest of materiasDestino) {
+      if (mOrigen.codigo === mDest.codigo) {
+        mejorMatch = mDest;
+        mejorSim = 1;
+        break;
+      }
+      const nom1 = normalizarTexto(mOrigen.nombre);
+      const nom2 = normalizarTexto(mDest.nombre);
+      const sim = similitudCadenas(nom1, nom2);
+      if (sim > mejorSim && sim > 0.75) {
+        mejorSim = sim;
+        mejorMatch = mDest;
+      }
+    }
+
+    resultados.push({
+      origen: mOrigen,
+      destino: mejorMatch,
+      similitud: mejorSim,
+      homologada: mejorMatch !== null
+    });
+
+    if (mejorMatch) homologadas++;
+    else noHomologadas++;
+  }
+
+  return { resultados, homologadas, noHomologadas, pensumDestino, destinoId };
+}
+
+function mostrarPreviewHomologacion() {
+  ccResultadoHomologacion = calcularHomologacion();
+  if (!ccResultadoHomologacion) return;
+
+  const { resultados, homologadas, noHomologadas } = ccResultadoHomologacion;
+  const preview = document.getElementById('cc-preview');
+  const body = document.getElementById('cc-preview-body');
+
+  if (resultados.length === 0) {
+    body.innerHTML = '<div style="font-size:13px;color:#64748b;padding:8px 0">No seleccionaste materias aprobadas. Selecciona al menos una para ver la homologación.</div>';
+    preview.style.display = 'block';
+    document.getElementById('cc-aplicar').style.display = 'none';
+    return;
+  }
+
+  let html = '';
+  // Mostrar las homologadas primero
+  const hom = resultados.filter(r => r.homologada);
+  const noHom = resultados.filter(r => !r.homologada);
+
+  if (hom.length > 0) {
+    html += `<div style="font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">✓ Homologadas (${hom.length})</div>`;
+    hom.forEach(r => {
+      html += `<div class="cc-hom-row">
+        <div class="cc-hom-orig">${r.origen.codigo} ${r.origen.nombre}</div>
+        <div class="cc-hom-arrow">→</div>
+        <div class="cc-hom-dest match">${r.destino.codigo} ${r.destino.nombre}</div>
+      </div>`;
+    });
+  }
+  if (noHom.length > 0) {
+    html += `<div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.04em;margin:10px 0 6px">✗ Sin equivalente (${noHom.length})</div>`;
+    noHom.forEach(r => {
+      html += `<div class="cc-hom-row">
+        <div class="cc-hom-orig">${r.origen.codigo} ${r.origen.nombre}</div>
+        <div class="cc-hom-arrow">→</div>
+        <div class="cc-hom-dest no-match">Sin materia equivalente</div>
+      </div>`;
+    });
+  }
+
+  const total = resultados.length;
+  html += `<div class="cc-stats">
+    <div class="cc-stat"><div class="cc-stat-val blue">${total}</div><div class="cc-stat-lbl">Materias aprobadas</div></div>
+    <div class="cc-stat"><div class="cc-stat-val green">${homologadas}</div><div class="cc-stat-lbl">Homologadas</div></div>
+    <div class="cc-stat"><div class="cc-stat-val red">${noHomologadas}</div><div class="cc-stat-lbl">Sin equivalente</div></div>
+    <div class="cc-stat"><div class="cc-stat-val blue">${homologadas > 0 ? Math.round(homologadas/total*100) : 0}%</div><div class="cc-stat-lbl">Cobertura</div></div>
+  </div>`;
+
+  body.innerHTML = html;
+  preview.style.display = 'block';
+  document.getElementById('cc-aplicar').style.display = homologadas > 0 ? '' : 'none';
+}
+
+function aplicarCambioCarrera() {
+  if (!ccResultadoHomologacion) return;
+  const { resultados, destinoId } = ccResultadoHomologacion;
+
+  // Cambiar a la carrera destino
+  const selPrincipal = document.getElementById('carrera-select');
+  selPrincipal.value = destinoId;
+  localStorage.setItem(CARRERA_KEY, destinoId);
+  carreraActual = PENSUMS.find(c => c.id === destinoId);
+  loadState();
+
+  // Limpiar estados destino
+  estados = {};
+
+  // Marcar las materias homologadas como aprobadas en destino
+  const hom = resultados.filter(r => r.homologada);
+  hom.forEach(r => {
+    estados[r.destino.id] = 'aprobada';
+  });
+  saveState();
+
+  // Cerrar modal y actualizar vista
+  document.getElementById('modal-cambio-carrera').classList.remove('open');
+  setSegundaCarrera('');
+  document.getElementById('segunda-carrera-select').value = '';
+  document.getElementById('h-titulo').textContent = carreraActual.nombre.split('—')[0].trim();
+  document.getElementById('h-sub').textContent = (carreraActual.nombre.split('—')[1] || '').trim() + (carreraActual.creditos_totales ? ` · ${carreraActual.creditos_totales} créditos totales` : '');
+  buildGlobalMap(carreraActual.semestres.map(s => ({ ...s, materias: s.materias.map(m => ({ ...m, carreraOrigen: carreraActual.id })) })));
+  render();
+
+  alert(`✓ Cambio de carrera aplicado. Se homologaron ${hom.length} materia(s) como aprobadas en ${carreraActual.nombre}.`);
+}
+
+// Event listeners del modal
+document.getElementById('btn-cambio-carrera').addEventListener('click', abrirModalCambioCarrera);
+document.getElementById('cc-cancel').addEventListener('click', () => {
+  document.getElementById('modal-cambio-carrera').classList.remove('open');
+});
+document.getElementById('cc-origen').addEventListener('change', () => {
+  actualizarSemestresCC();
+  actualizarMateriasCC();
+  document.getElementById('cc-preview').style.display = 'none';
+  document.getElementById('cc-aplicar').style.display = 'none';
+});
+document.getElementById('cc-semestre').addEventListener('change', () => {
+  actualizarMateriasCC();
+  document.getElementById('cc-preview').style.display = 'none';
+  document.getElementById('cc-aplicar').style.display = 'none';
+});
+document.getElementById('cc-destino').addEventListener('change', () => {
+  document.getElementById('cc-preview').style.display = 'none';
+  document.getElementById('cc-aplicar').style.display = 'none';
+});
+document.getElementById('cc-preview-btn').addEventListener('click', mostrarPreviewHomologacion);
+document.getElementById('cc-aplicar').addEventListener('click', aplicarCambioCarrera);
