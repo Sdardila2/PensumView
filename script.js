@@ -3,6 +3,10 @@ const CARRERA_KEY = 'pensum_v2_carrera';
 const SEGUNDA_CARRERA_KEY = 'pensum_v2_segunda_carrera';
 const VISTA_KEY = 'pensum_v2_vista';
 
+// Datos cargados dinámicamente desde data.json
+let PENSUMS = [];
+let CARRERAS_COMPATIBLES = {};
+
 let estados = {};
 let carreraActual = null;
 let segundaCarreraId = null;
@@ -984,6 +988,40 @@ function setSegundaCarrera(secondId) {
   render();
 }
 
+
+// ── Carga de datos desde JSON ───────────────────────────────────────
+async function cargarDatos() {
+  const response = await fetch('data.json', { cache: 'no-store' });
+
+  if (!response.ok) {
+    throw new Error(`No se pudo cargar data.json (${response.status} ${response.statusText})`);
+  }
+
+  const data = await response.json();
+
+  // Formato principal: { "PENSUMS": [...], "CARRERAS_COMPATIBLES": {...} }
+  // También se soporta un arreglo directo de pensums por compatibilidad futura.
+  PENSUMS = Array.isArray(data) ? data : (data.PENSUMS || data.pensums || []);
+  CARRERAS_COMPATIBLES = Array.isArray(data)
+    ? {}
+    : (data.CARRERAS_COMPATIBLES || data.carrerasCompatibles || data.carreras_compatibles || {});
+
+  if (!Array.isArray(PENSUMS) || PENSUMS.length === 0) {
+    throw new Error('data.json no contiene una lista válida de pensums.');
+  }
+}
+
+function mostrarErrorCargaDatos(error) {
+  console.error(error);
+  const mensaje = `
+    <div style="position:fixed;inset:16px;z-index:99999;background:#fff3f3;color:#7f1d1d;border:1px solid #fecaca;border-radius:12px;padding:16px;font-family:Inter,system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.12)">
+      <strong>No se pudieron cargar los datos del pensum.</strong><br>
+      Revisa que <code>data.json</code> exista y que estés abriendo el proyecto desde un servidor local o hosting, no directamente como archivo <code>file://</code>.<br>
+      <small>${error.message}</small>
+    </div>`;
+  document.body.insertAdjacentHTML('afterbegin', mensaje);
+}
+
 // ── Inicialización ──────────────────────────────────────────────────
 function init() {
   vistaMode = localStorage.getItem(VISTA_KEY) || 'completa';
@@ -1019,7 +1057,7 @@ function init() {
   initDragSelect();
 }
 
-init();
+cargarDatos().then(init).catch(mostrarErrorCargaDatos);
 // ── Sistema de Cambio de Carrera ─────────────────────────────────────────
 
 let ccMateriasSeleccionadas = new Set();
