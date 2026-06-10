@@ -70,8 +70,8 @@ function construirMapaHomologaciones(principal, segunda) {
   for (const mp of materiasPrinc) {
     for (const ms of materiasSeg) {
       if (sonEquivalentes(mp, ms)) {
-        mapa[principal.id][mp.id] = ms.id;
-        mapa[segunda.id][ms.id] = mp.id;
+        mapa[principal.id][mp.codigo] = ms.codigo;
+        mapa[segunda.id][ms.codigo] = mp.codigo;
       }
     }
   }
@@ -90,9 +90,9 @@ function creditosEnCursoEnSemestre(semestreNumero, incluirId = null) {
   const semestre = carreraActual.semestres.find(s => s.numero === semestreNumero);
   if (!semestre) return 0;
   for (const m of semestre.materias) {
-    const estado = getEstado(m.id);
+    const estado = getEstado(m.codigo);
     if (estado === 'cursando') total += m.creditos;
-    if (incluirId === m.id) total += m.creditos;
+    if (incluirId === m.codigo) total += m.creditos;
   }
   return total;
 }
@@ -176,11 +176,11 @@ function fusionarPensums(principal, segunda) {
   const materiasHomologadasSegunda = new Set();
   for (const semF of semestresFusion) {
     for (const m of semF.materias) {
-      if (mapaHomologaciones[principal.id] && mapaHomologaciones[principal.id][m.id]) {
-        const homId = mapaHomologaciones[principal.id][m.id];
-        const homMateria = segunda.semestres.flatMap(s => s.materias).find(mat => mat.id === homId);
+      if (mapaHomologaciones[principal.id] && mapaHomologaciones[principal.id][m.codigo]) {
+        const homId = mapaHomologaciones[principal.id][m.codigo];
+        const homMateria = segunda.semestres.flatMap(s => s.materias).find(mat => mat.codigo === homId);
         if (homMateria) {
-          m.homologacion = { carrera: segunda.id, materiaId: homId, nombre: homMateria.nombre, codigo: homMateria.codigo };
+          m.homologacion = { carrera: segunda.id, materiaCodigo: homId, nombre: homMateria.nombre, codigo: homMateria.codigo };
           materiasHomologadasSegunda.add(homId);
         }
       }
@@ -198,7 +198,7 @@ function fusionarPensums(principal, segunda) {
     const semSegunda = segunda.semestres.find(s => s.numero === semNum);
     if (semSegunda && semNum > 1) { // ← SOLO agregar materias de segunda carrera a partir de semestre 2
       for (const m of semSegunda.materias) {
-        if (!materiasHomologadasSegunda.has(m.id)) {
+        if (!materiasHomologadasSegunda.has(m.codigo)) {
           semFusion.materias.push({ ...m, carreraOrigen: segunda.id, homologacion: null });
         }
       }
@@ -216,7 +216,7 @@ function buildGlobalMap(semestresFusion) {
   materiasMap = {};
   for (const sem of semestresFusion) {
     for (const m of sem.materias) {
-      materiasMap[m.id] = { ...m, _sem: sem.numero };
+      materiasMap[m.codigo] = { ...m, _sem: sem.numero };
     }
   }
 }
@@ -226,31 +226,27 @@ function calcVisible(id) {
   if (!m) return 'disponible';
   const estado = (m.carreraOrigen === carreraActual?.id) ? getEstado(id) : getEstadoSegunda(id);
   if (estado) return estado;
-  const prereqsOk = m.prerreqs.every(pid => {
+  const prereqsOk = (m.prerreqs || []).every(pid => {
     const pm = materiasMap[pid];
     if (!pm) return true;
     const estP = (pm.carreraOrigen === carreraActual?.id) ? getEstado(pid) : getEstadoSegunda(pid);
     return estP === 'aprobada';
   });
-  const correqsOk = m.correqs.every(cid => {
-    const cm = materiasMap[cid];
-    if (!cm) return true;
-    const estC = (cm.carreraOrigen === carreraActual?.id) ? getEstado(cid) : getEstadoSegunda(cid);
-    return estC === 'cursando' || estC === 'aprobada';
-  });
-  return (prereqsOk && correqsOk) ? 'disponible' : 'bloqueada';
+  return prereqsOk ? 'disponible' : 'bloqueada';
 }
 
 function makeCard(m) {
   const div = document.createElement('div');
-  const estado = calcVisible(m.id);
+  const estado = calcVisible(m.codigo);
   const estClass = estado !== 'disponible' && estado !== 'bloqueada' ? `estado-${estado}` : '';
   let additionalClass = '';
   if (m.carreraOrigen !== carreraActual?.id) additionalClass = ' segunda-carrera';
-  div.className = `mat-card ${m.categoria} ${estClass}${additionalClass}`.trim();
-  div.dataset.id = m.id;
+  div.className = `mat-card ${estClass}${additionalClass}`.trim();
+  div.style.position = 'relative';
+  div.style.zIndex = '3';
+  div.dataset.id = m.codigo;
 
-  if (estado === 'bloqueada' && !calcVisible(m.id)) {
+  if (estado === 'bloqueada' && !calcVisible(m.codigo)) {
     const badge = document.createElement('span');
     badge.className = 'mat-bloqueada-badge';
     badge.textContent = '🔒';
@@ -265,7 +261,7 @@ function makeCard(m) {
   nombre.textContent = m.nombre;
   const cred = document.createElement('div');
   cred.className = 'mat-cred';
-  cred.textContent = `Cr. ${m.creditos} (${m.ht || 0}, ${m.hp || 0})`;
+  cred.textContent = `Cr. ${m.creditos}`;
   div.appendChild(codigo);
   div.appendChild(nombre);
   div.appendChild(cred);
@@ -289,6 +285,60 @@ function invalidatePositions() {
   positionsDirty = true;
 }
 
+function ensureArrowsLayer() {
+  const canvas = document.getElementById('pensum-canvas');
+  const svg = document.getElementById('arrows-svg');
+  if (!canvas || !svg) return;
+
+  // Capa intermedia: visible sobre el fondo, pero debajo de las tarjetas.
+  // No se recalcula en hover/highlight para que las flechas no cambien de tamaño.
+  canvas.style.position = 'relative';
+  canvas.style.isolation = 'isolate';
+
+  const rowSem = canvas.querySelector('.row-sem');
+  if (rowSem) {
+    rowSem.style.position = 'relative';
+    rowSem.style.zIndex = 'auto';
+  }
+
+  canvas.querySelectorAll('.sem-col, .sem-body').forEach(el => {
+    el.style.position = 'relative';
+    el.style.zIndex = 'auto';
+  });
+
+  Object.assign(svg.style, {
+    position: 'absolute',
+    inset: '0',
+    width: '100%',
+    height: '100%',
+    overflow: 'visible',
+    pointerEvents: 'none',
+    zIndex: '1'
+  });
+  svg.setAttribute('aria-hidden', 'true');
+}
+
+function getArrowEndpoints(from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return {
+      sx: dx >= 0 ? from.right : from.left,
+      sy: from.y,
+      tx: dx >= 0 ? to.left : to.right,
+      ty: to.y
+    };
+  }
+
+  return {
+    sx: from.x,
+    sy: dy >= 0 ? from.bottom : from.top,
+    tx: to.x,
+    ty: dy >= 0 ? to.top : to.bottom
+  };
+}
+
 function drawArrows() {
   if (!positionsDirty && positionsCache) {
     drawArrowsFromCache(positionsCache);
@@ -296,15 +346,24 @@ function drawArrows() {
   }
   const svg = document.getElementById('arrows-svg');
   if (!svg) return;
+  ensureArrowsLayer();
   const canvasRect = document.getElementById('pensum-canvas').getBoundingClientRect();
   const scrollLeft = document.querySelector('.canvas-wrapper').scrollLeft;
   const scrollTop = document.querySelector('.canvas-wrapper').scrollTop;
   const positions = {};
   for (const [id, el] of Object.entries(cardEls)) {
     const rect = el.getBoundingClientRect();
+    const left = rect.left - canvasRect.left + scrollLeft;
+    const top = rect.top - canvasRect.top + scrollTop;
     positions[id] = {
-      x: rect.left - canvasRect.left + scrollLeft + rect.width / 2,
-      y: rect.top - canvasRect.top + scrollTop + rect.height / 2
+      x: left + rect.width / 2,
+      y: top + rect.height / 2,
+      left,
+      right: left + rect.width,
+      top,
+      bottom: top + rect.height,
+      width: rect.width,
+      height: rect.height
     };
   }
   positionsCache = positions;
@@ -315,41 +374,30 @@ function drawArrows() {
 function drawArrowsFromCache(positions) {
   const svg = document.getElementById('arrows-svg');
   if (!svg) return;
+  ensureArrowsLayer();
   svg.innerHTML = '<defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#94a3b8"/></marker><marker id="arr-co" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#f59e0b"/></marker></defs>';
   for (const [id, m] of Object.entries(materiasMap)) {
     const to = positions[id];
     if (!to) continue;
-    m.prerreqs.forEach(pid => {
+    (m.prerreqs || []).forEach(pid => {
       const from = positions[pid];
       if (!from) return;
-      const mx = (from.x + to.x) / 2;
+      const { sx, sy, tx, ty } = getArrowEndpoints(from, to);
+      const mx = (sx + tx) / 2;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', `M${from.x},${from.y} C${mx},${from.y} ${mx},${to.y} ${to.x},${to.y}`);
+      path.setAttribute('d', `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`);
       path.setAttribute('stroke', '#94a3b8');
-      path.setAttribute('stroke-width', '1.2');
+      path.setAttribute('stroke-width', '1.6');
       path.setAttribute('fill', 'none');
       path.setAttribute('opacity', '0.5');
+      path.setAttribute('vector-effect', 'non-scaling-stroke');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      path.style.pointerEvents = 'none';
       path.setAttribute('marker-end', 'url(#arr)');
       path.dataset.from = pid;
       path.dataset.to = id;
       path.dataset.type = 'pre';
-      svg.appendChild(path);
-    });
-    m.correqs.forEach(cid => {
-      const from = positions[cid];
-      if (!from) return;
-      const mx = (from.x + to.x) / 2;
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', `M${from.x},${from.y} C${mx},${from.y} ${mx},${to.y} ${to.x},${to.y}`);
-      path.setAttribute('stroke', '#f59e0b');
-      path.setAttribute('stroke-width', '1.2');
-      path.setAttribute('stroke-dasharray', '4,3');
-      path.setAttribute('fill', 'none');
-      path.setAttribute('opacity', '0.5');
-      path.setAttribute('marker-end', 'url(#arr-co)');
-      path.dataset.from = cid;
-      path.dataset.to = id;
-      path.dataset.type = 'co';
       svg.appendChild(path);
     });
   }
@@ -360,12 +408,11 @@ function computeRelIds(ids) {
   for (const id of ids) {
     const m = materiasMap[id];
     if (m) {
-      m.prerreqs.forEach(p => related.add(p));
-      m.correqs.forEach(c => related.add(c));
+      (m.prerreqs || []).forEach(p => related.add(p));
     }
   }
   for (const [oid, om] of Object.entries(materiasMap)) {
-    if (om.prerreqs.some(p => ids.has(p)) || om.correqs.some(c => ids.has(c))) {
+    if ((om.prerreqs || []).some(p => ids.has(p))) {
       related.add(oid);
     }
   }
@@ -375,16 +422,17 @@ function computeRelIds(ids) {
 function updateArrowsHighlight(activeIds) {
   const svg = document.getElementById('arrows-svg');
   if (!svg) return;
+  ensureArrowsLayer();
   const paths = svg.querySelectorAll('path');
   if (activeIds.size === 0) {
     paths.forEach(p => {
       p.setAttribute('opacity', '0.5');
       if (p.dataset.type === 'pre') {
         p.setAttribute('stroke', '#94a3b8');
-        p.setAttribute('stroke-width', '1.2');
+        p.setAttribute('stroke-width', '1.6');
       } else if (p.dataset.type === 'co') {
         p.setAttribute('stroke', '#f59e0b');
-        p.setAttribute('stroke-width', '1.2');
+        p.setAttribute('stroke-width', '1.6');
       }
     });
     return;
@@ -393,10 +441,10 @@ function updateArrowsHighlight(activeIds) {
     p.setAttribute('opacity', '0.25');
     if (p.dataset.type === 'pre') {
       p.setAttribute('stroke', '#94a3b8');
-      p.setAttribute('stroke-width', '1.2');
+      p.setAttribute('stroke-width', '1.6');
     } else if (p.dataset.type === 'co') {
       p.setAttribute('stroke', '#f59e0b');
-      p.setAttribute('stroke-width', '1.2');
+      p.setAttribute('stroke-width', '1.6');
     }
   });
   paths.forEach(path => {
@@ -408,10 +456,10 @@ function updateArrowsHighlight(activeIds) {
       path.setAttribute('opacity', '1');
       if (path.dataset.type === 'pre') {
         path.setAttribute('stroke', '#3b82f6');
-        path.setAttribute('stroke-width', '2.5');
+        path.setAttribute('stroke-width', '1.6');
       } else if (path.dataset.type === 'co') {
         path.setAttribute('stroke', '#ea580c');
-        path.setAttribute('stroke-width', '2.5');
+        path.setAttribute('stroke-width', '1.6');
       }
     }
   });
@@ -434,6 +482,7 @@ function render() {
   if (!carreraActual) return;
   const canvas = document.getElementById('pensum-canvas');
   canvas.innerHTML = '<svg class="arrows" id="arrows-svg"></svg>';
+  ensureArrowsLayer();
   cardEls = {};
 
   let semestresMostrar;
@@ -455,9 +504,9 @@ function render() {
     col.className = 'sem-col';
     col.id = `semcol-${sem.numero}`;
     const visibles = vistaMode === 'disponible'
-      ? sem.materias.filter(m => calcVisible(m.id) !== 'bloqueada')
+      ? sem.materias.filter(m => calcVisible(m.codigo) !== 'bloqueada')
       : sem.materias;
-    const dispCount = sem.materias.filter(m => calcVisible(m.id) === 'disponible').length;
+    const dispCount = sem.materias.filter(m => calcVisible(m.codigo) === 'disponible').length;
     const dispBadge = vistaMode === 'completa' && dispCount > 0
       ? `<div class="disponibles-count">${dispCount} disponible${dispCount > 1 ? 's' : ''}</div>` : '';
     col.innerHTML = `<div class="sem-head"><div class="sem-num">Semestre ${toRoman(sem.numero)}</div><div class="sem-cred">Cré. ${sem.creditos}</div>${dispBadge}</div><div class="sem-body" id="sb-${sem.numero}"></div>`;
@@ -465,17 +514,18 @@ function render() {
     rowSem.appendChild(col);
   }
   canvas.insertBefore(rowSem, canvas.querySelector('svg'));
+  ensureArrowsLayer();
 
   for (const sem of semestresMostrar) {
     const body = canvas.querySelector(`#sb-${sem.numero}`);
     if (!body) continue;
     const list = vistaMode === 'disponible'
-      ? sem.materias.filter(m => calcVisible(m.id) !== 'bloqueada')
+      ? sem.materias.filter(m => calcVisible(m.codigo) !== 'bloqueada')
       : sem.materias;
     list.forEach(m => {
       const card = makeCard(m);
       body.appendChild(card);
-      cardEls[m.id] = card;
+      cardEls[m.codigo] = card;
     });
   }
 
@@ -495,8 +545,8 @@ function renderStats() {
   let ap = 0, rep = 0, cur = 0, disp = 0, total = 0, credAp = 0, credTot = 0;
   Object.values(materiasMap).forEach(m => {
     total++; credTot += m.creditos;
-    const e = (m.carreraOrigen === carreraActual?.id) ? getEstado(m.id) : getEstadoSegunda(m.id);
-    const v = calcVisible(m.id);
+    const e = (m.carreraOrigen === carreraActual?.id) ? getEstado(m.codigo) : getEstadoSegunda(m.codigo);
+    const v = calcVisible(m.codigo);
     if (e === 'aprobada') { ap++; credAp += m.creditos; }
     if (e === 'reprobada') rep++;
     if (e === 'cursando') cur++;
@@ -511,7 +561,7 @@ function renderStats() {
     let ap2 = 0, rep2 = 0, cur2 = 0;
     Object.values(materiasMap).forEach(m => {
       if (m.carreraOrigen === segundaCarreraId) {
-        const e = getEstadoSegunda(m.id);
+        const e = getEstadoSegunda(m.codigo);
         if (e === 'aprobada') ap2++;
         if (e === 'reprobada') rep2++;
         if (e === 'cursando') cur2++;
@@ -688,7 +738,7 @@ function activateCard(id) {
   Object.entries(cardEls).forEach(([eid, el]) => {
     if (!relIds.has(eid)) { el.classList.add('dim'); return; }
     if (eid === id) return;
-    if (m.prerreqs.includes(eid) || m.correqs.includes(eid)) el.classList.add('highlight-req');
+    if ((m.prerreqs || []).includes(eid)) el.classList.add('highlight-req');
     else el.classList.add('highlight-dep');
   });
 
@@ -710,11 +760,11 @@ function showDetail(id) {
   document.getElementById('dp-codigo').textContent = m.codigo;
   document.getElementById('dp-nombre').textContent = m.nombre;
 
-  let html = `<div class="dp-section"><div class="dp-stitle">Créditos</div><div style="font-size:13px;font-weight:600">${m.creditos} &nbsp;<span style="font-size:10px;color:var(--muted)">(HT: ${m.ht || 0} · HP: ${m.hp || 0})</span></div></div>`;
+  let html = `<div class="dp-section"><div class="dp-stitle">Créditos</div><div style="font-size:13px;font-weight:600">${m.creditos}</div></div>`;
 
-  if (m.prerreqs.length > 0) {
+  if ((m.prerreqs || []).length > 0) {
     html += `<div class="dp-section"><div class="dp-stitle">Prerrequisitos</div>`;
-    m.prerreqs.forEach(pid => {
+    (m.prerreqs || []).forEach(pid => {
       const pm = materiasMap[pid];
       const ok = (pm?.carreraOrigen === carreraActual?.id) ? getEstado(pid) === 'aprobada' : getEstadoSegunda(pid) === 'aprobada';
       html += `<div class="dp-row ${ok ? 'ok' : 'fail'}">${ok ? '✓' : '✗'} ${pm ? pm.nombre : pid} <span style="margin-left:auto;font-size:9px;opacity:0.7">${pm ? pm.codigo : ''}</span></div>`;
@@ -724,18 +774,7 @@ function showDetail(id) {
     html += `<div class="dp-section"><div class="dp-stitle">Prerrequisitos</div><div class="dp-empty">Sin prerrequisitos</div></div>`;
   }
 
-  if (m.correqs.length > 0) {
-    html += `<div class="dp-section"><div class="dp-stitle">Correquisitos</div>`;
-    m.correqs.forEach(cid => {
-      const cm = materiasMap[cid];
-      const ce = (cm?.carreraOrigen === carreraActual?.id) ? getEstado(cid) : getEstadoSegunda(cid);
-      const ok = ce === 'cursando' || ce === 'aprobada';
-      html += `<div class="dp-row ${ok ? 'co-ok' : 'co-fail'}">${ok ? '✓' : '✗'} ${cm ? cm.nombre : cid} <span style="margin-left:auto;font-size:9px;opacity:0.7">${cm ? cm.codigo : ''}</span></div>`;
-    });
-    html += `</div>`;
-  }
-
-  const deps = Object.values(materiasMap).filter(om => om.prerreqs.includes(id) || om.correqs.includes(id));
+  const deps = Object.values(materiasMap).filter(om => (om.prerreqs || []).includes(id));
   if (deps.length > 0) {
     html += `<div class="dp-section"><div class="dp-stitle">Desbloquea</div>`;
     deps.forEach(dm => {
@@ -840,7 +879,7 @@ function applySearch(q) {
 
   if (!searchQuery) {
     Object.values(cardEls).forEach(el => el.classList.remove('dim', 'search-match'));
-    if (svg) svg.querySelectorAll('path').forEach(p => { p.setAttribute('opacity', '0.5'); p.setAttribute('stroke-width', '1.2'); });
+    if (svg) svg.querySelectorAll('path').forEach(p => { p.setAttribute('opacity', '0.5'); p.setAttribute('stroke-width', '1.6'); });
     if (activeId) updateArrowsHighlight(new Set([activeId]));
     else if (seleccionIds.size) updateArrowsHighlight(seleccionIds);
     else updateArrowsHighlight(new Set());
@@ -851,7 +890,7 @@ function applySearch(q) {
   const matchIds = new Set();
   Object.values(materiasMap).forEach(m => {
     if (m.nombre.toLowerCase().includes(searchQuery) || m.codigo.toLowerCase().includes(searchQuery))
-      matchIds.add(m.id);
+      matchIds.add(m.codigo);
   });
 
   Object.entries(cardEls).forEach(([id, el]) => {
@@ -860,7 +899,7 @@ function applySearch(q) {
     else el.classList.add('dim');
   });
 
-  if (svg) svg.querySelectorAll('path').forEach(p => { p.setAttribute('opacity', '0.05'); p.setAttribute('stroke-width', '1.2'); });
+  if (svg) svg.querySelectorAll('path').forEach(p => { p.setAttribute('opacity', '0.05'); p.setAttribute('stroke-width', '1.6'); });
 
   if (matchIds.size === 1) {
     const id = [...matchIds][0];
@@ -1033,7 +1072,7 @@ function actualizarSemestresCC() {
     ? (() => {
         let max = 1;
         for (const s of pensum.semestres) {
-          const tieneAprobadas = s.materias.some(m => getEstado(m.id) === 'aprobada');
+          const tieneAprobadas = s.materias.some(m => getEstado(m.codigo) === 'aprobada');
           if (tieneAprobadas) max = s.numero;
         }
         return max;
@@ -1070,7 +1109,7 @@ function actualizarMateriasCC() {
   // Pre-seleccionar las que ya están aprobadas en la carrera actual
   if (carreraActual?.id === origenId) {
     materiasHasta.forEach(m => {
-      if (getEstado(m.id) === 'aprobada') ccMateriasSeleccionadas.add(m.id);
+      if (getEstado(m.codigo) === 'aprobada') ccMateriasSeleccionadas.add(m.codigo);
     });
   }
 
@@ -1078,16 +1117,16 @@ function actualizarMateriasCC() {
   contenedor.innerHTML = '';
   materiasHasta.forEach(m => {
     const chip = document.createElement('div');
-    chip.className = 'cc-chip' + (ccMateriasSeleccionadas.has(m.id) ? ' selected' : '');
-    chip.dataset.id = m.id;
+    chip.className = 'cc-chip' + (ccMateriasSeleccionadas.has(m.codigo) ? ' selected' : '');
+    chip.dataset.id = m.codigo;
     chip.title = `Sem ${m.semNum} · ${m.creditos} créditos`;
     chip.textContent = `${m.codigo} ${m.nombre}`;
     chip.addEventListener('click', () => {
-      if (ccMateriasSeleccionadas.has(m.id)) {
-        ccMateriasSeleccionadas.delete(m.id);
+      if (ccMateriasSeleccionadas.has(m.codigo)) {
+        ccMateriasSeleccionadas.delete(m.codigo);
         chip.classList.remove('selected');
       } else {
-        ccMateriasSeleccionadas.add(m.id);
+        ccMateriasSeleccionadas.add(m.codigo);
         chip.classList.add('selected');
       }
     });
@@ -1116,7 +1155,7 @@ function calcularHomologacion() {
   let noHomologadas = 0;
 
   for (const idAprobado of ccMateriasSeleccionadas) {
-    const mOrigen = materiasOrigen.find(m => m.id === idAprobado);
+    const mOrigen = materiasOrigen.find(m => m.codigo === idAprobado);
     if (!mOrigen) continue;
 
     // Buscar equivalente en destino
@@ -1222,7 +1261,7 @@ function aplicarCambioCarrera() {
   // Marcar las materias homologadas como aprobadas en destino
   const hom = resultados.filter(r => r.homologada);
   hom.forEach(r => {
-    estados[r.destino.id] = 'aprobada';
+    estados[r.destino.codigo] = 'aprobada';
   });
   saveState();
 

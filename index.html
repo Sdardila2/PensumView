@@ -9,6 +9,49 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
+
+  <style id="arrow-thicker-stable-fix">
+    #pensum-canvas {
+      position: relative;
+      isolation: isolate;
+    }
+
+    #arrows-svg,
+    .arrows {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    #arrows-svg path {
+      pointer-events: none;
+      vector-effect: non-scaling-stroke;
+    }
+
+    #pensum-canvas .row-sem,
+    #pensum-canvas .sem-col,
+    #pensum-canvas .sem-body {
+      position: relative;
+      z-index: auto;
+    }
+
+    .mat-card {
+      position: relative;
+      z-index: 3;
+    }
+
+    .mat-card:hover,
+    .mat-card.active,
+    .mat-card.sel-check,
+    .mat-card.highlight-req,
+    .mat-card.highlight-dep {
+      z-index: 4;
+    }
+  </style>
 </head>
 
 <body>
@@ -51,39 +94,6 @@
   <div class="stats-bar" id="stats-bar"></div>
 
   <div class="legend-bar" id="legend-bar">
-    <span style="font-size:11px;font-weight:600;color:var(--muted)">Categorías:</span>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-matematicas-bg);border-color:var(--cat-matematicas-border)">
-      </div><span style="color:var(--cat-matematicas-text)">Matemáticas</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-ciencias-bg);border-color:var(--cat-ciencias-border)"></div><span
-        style="color:var(--cat-ciencias-text)">Ciencias</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-programacion-bg);border-color:var(--cat-programacion-border)">
-      </div><span style="color:var(--cat-programacion-text)">Programación</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-sistemas-bg);border-color:var(--cat-sistemas-border)"></div><span
-        style="color:var(--cat-sistemas-text)">Sistemas</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-electiva-bg);border-color:var(--cat-electiva-border)"></div><span
-        style="color:var(--cat-electiva-text)">Electiva</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-humanidades-bg);border-color:var(--cat-humanidades-border)">
-      </div><span style="color:var(--cat-humanidades-text)">Humanidades</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-idiomas-bg);border-color:var(--cat-idiomas-border)"></div><span
-        style="color:var(--cat-idiomas-text)">Idiomas</span>
-    </div>
-    <div class="leg">
-      <div class="leg-dot" style="background:var(--cat-grado-bg);border-color:var(--cat-grado-border)"></div><span
-        style="color:var(--cat-grado-text)">Grado/Comp.</span>
-    </div>
     <span style="margin-left:10px;font-size:11px;font-weight:600;color:var(--muted)">Estados:</span>
     <div class="leg">
       <div class="leg-dot" style="background:var(--estado-aprobada-bg);border-color:var(--estado-aprobada-border)">
